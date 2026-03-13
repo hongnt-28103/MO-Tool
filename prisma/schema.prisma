@@ -1,0 +1,32 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserToken {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  refreshTokenEnc   String
+  accessToken       String
+  accessTokenExpiry DateTime
+  publisherId       String?
+  publisherName     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  email       String
+  action      String
+  publisherId String
+  payload     String   // JSON string (SQLite workaround)
+  result      String   // JSON string
+  statusCode  Int
+  createdAt   DateTime @default(now())
+}
