@@ -37,3 +37,21 @@ export function resolvePublisher(accounts: Array<{ publisherId: string; name?: s
     publisherName: PUBLISHER_WHITELIST[matched[0].publisherId],
   };
 }
+
+// New function to auto-detect publisher based on email
+export function resolvePublisherByEmail(email: string): { publisherId: string; publisherName: string } | null {
+  const lowerEmail = email.toLowerCase();
+  if (lowerEmail.includes("nami") || lowerEmail.includes("@nami")) {
+    return {
+      publisherId: process.env.ADMOB_PUB_NAMI ?? "pub-4973559944609228",
+      publisherName: "Nami",
+    };
+  }
+  if (lowerEmail.includes("nasus") || lowerEmail.includes("@nasus")) {
+    return {
+      publisherId: process.env.ADMOB_PUB_NASUS ?? "pub-4584260126367940",
+      publisherName: "Nasus",
+    };
+  }
+  return null;
+}

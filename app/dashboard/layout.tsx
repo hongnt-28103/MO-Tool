@@ -9,7 +9,8 @@ const FS = "'Instrument Sans','Inter',system-ui,sans-serif";
 
 const NAV = [
   { href:"/dashboard",            icon:"⬡",  label:"Dashboard" },
-  { href:"/dashboard/apps",       icon:"📱", label:"Ứng dụng" },
+  { href:"/dashboard/apps",       icon:"📱", label:"Tạo App" },
+  { href:"/dashboard/apps/list",  icon:"📋", label:"Danh sách App" },
   { href:"/dashboard/adunits",    icon:"🔲", label:"Tạo Ad Unit" },
   { href:"/dashboard/mapping",    icon:"⚡", label:"Mapping" },
 ];

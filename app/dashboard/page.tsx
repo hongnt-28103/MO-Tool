@@ -31,7 +31,7 @@ export default function DashboardPage() {
   ];
 
   const ACTIONS = [
-    { title:"Tạo App mới",  desc:"Tạo app trên AdMob + networks", icon:"📱", href:"/dashboard/apps",    color:C.accent },
+    { title:"Tạo App mới",  desc:"Tạo app trên 4 nền tảng đồng thời", icon:"📱", href:"/dashboard/apps",    color:C.accent },
     { title:"Tạo Ad Unit",  desc:"Bulk create từ CSV",             icon:"🔲", href:"/dashboard/adunits", color:C.blue   },
     { title:"Mapping",      desc:"Map placement + mediation group",icon:"⚡", href:"/dashboard/mapping", color:C.yellow },
   ];
@@ -46,7 +46,7 @@ export default function DashboardPage() {
         position:"sticky", top:0, zIndex:20 }}>
         <div style={{ fontFamily:FD, fontWeight:800, fontSize:15 }}>Dashboard</div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={()=>router.push("/dashboard/apps")}
+          <button onClick={()=>{console.log('Topbar create app'); router.push("/dashboard/apps")}}
             style={{ padding:"7px 14px", borderRadius:7, border:"none", background:C.accent,
               color:C.ink, fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:FS }}>
             + Tạo App
@@ -76,7 +76,7 @@ export default function DashboardPage() {
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:24 }}>
           {ACTIONS.map(a => (
             <div key={a.title}
-              onClick={()=>router.push(a.href)}
+              onClick={()=>{console.log('Navigating to', a.href); router.push(a.href)}}
               style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:12,
                 padding:"18px", cursor:"pointer", transition:"border-color .15s" }}
               onMouseEnter={e=>(e.currentTarget.style.borderColor=a.color)}
@@ -102,6 +102,12 @@ export default function DashboardPage() {
           <div style={{ padding:"13px 18px", borderBottom:`1px solid ${C.border}`,
             display:"flex", alignItems:"center", justifyContent:"space-between" }}>
             <span style={{ fontFamily:FD, fontWeight:700, fontSize:13 }}>Danh sách Apps</span>
+            <button onClick={()=>router.push("/dashboard/apps/list")}
+              style={{ padding:"5px 11px", borderRadius:6, background:"transparent",
+                border:`1px solid ${C.border2}`, color:C.text2, fontSize:11.5,
+                fontWeight:600, cursor:"pointer", fontFamily:FS }}>
+              Xem tất cả →
+            </button>
           </div>
           {loading ? (
             <div style={{ padding:40, textAlign:"center", color:C.text3 }}>
@@ -126,22 +132,20 @@ export default function DashboardPage() {
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead>
                 <tr>
-                  {["Tên App","App ID","Platform","Hành động"].map(h=>(
+                  {["Tên App","Platform","Chế độ","Hành động"].map(h=>(
                     <th key={h} style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".1em",
                       color:C.text3, padding:"9px 14px", textAlign:"left", borderBottom:`1px solid ${C.border}` }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {apps.map((app:any)=>(
-                  <tr key={app.appId} style={{ transition:"background .1s" }}
+                {apps.slice(0, 10).map((app:any)=>(
+                  <tr key={app.id} style={{ transition:"background .1s", cursor:"pointer" }}
+                    onClick={()=>router.push(`/dashboard/apps/${app.id}`)}
                     onMouseEnter={e=>(e.currentTarget.style.background="rgba(79,240,180,0.03)")}
                     onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
                     <td style={{ padding:"10px 14px", fontSize:13, color:C.text, fontWeight:500, borderBottom:`1px solid ${C.border}` }}>
-                      {app.manualAppInfo?.displayName ?? app.linkedAppInfo?.displayName ?? "—"}
-                    </td>
-                    <td style={{ padding:"10px 14px", fontSize:11.5, color:C.text2, fontFamily:FM, borderBottom:`1px solid ${C.border}` }}>
-                      {app.appId}
+                      {app.name ?? "—"}
                     </td>
                     <td style={{ padding:"10px 14px", borderBottom:`1px solid ${C.border}` }}>
                       <span style={{ display:"inline-flex", alignItems:"center", padding:"2px 8px", borderRadius:99,
@@ -151,13 +155,11 @@ export default function DashboardPage() {
                         {app.platform}
                       </span>
                     </td>
+                    <td style={{ padding:"10px 14px", fontSize:11, color:C.text3, borderBottom:`1px solid ${C.border}` }}>
+                      {app.isLive ? "Live" : "Test"}
+                    </td>
                     <td style={{ padding:"10px 14px", borderBottom:`1px solid ${C.border}` }}>
-                      <button onClick={()=>router.push(`/dashboard/adunits?appId=${app.appId}`)}
-                        style={{ padding:"5px 11px", borderRadius:6, background:"transparent",
-                          border:`1px solid ${C.border2}`, color:C.text2, fontSize:11.5,
-                          fontWeight:600, cursor:"pointer", fontFamily:FS }}>
-                        Tạo Ad Unit
-                      </button>
+                      <span style={{ fontSize:11, color:C.text3 }}>→ Chi tiết</span>
                     </td>
                   </tr>
                 ))}
