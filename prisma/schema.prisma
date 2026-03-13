@@ -70,4 +70,33 @@ model App {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  adUnits   AdUnit[]
+}
+
+model AdUnit {
+  id              String   @id @default(cuid())
+  appId           String
+  app             App      @relation(fields: [appId], references: [id])
+  name            String
+  format          String   // INTERSTITIAL, REWARDED, BANNER, NATIVE, APP_OPEN
+  tier            String   @default("ap") // high, med, ap (all-price)
+  admobAdUnitId   String?
+  admobStatus     String   @default("none")
+  admobError      String?
+  createdAt       DateTime @default(now())
+
+  placements      AdUnitPlacement[]
+}
+
+model AdUnitPlacement {
+  id            String   @id @default(cuid())
+  adUnitId      String
+  adUnit        AdUnit   @relation(fields: [adUnitId], references: [id])
+  platform      String   // pangle, liftoff, mintegral
+  placementId   String?
+  placementName String?
+  status        String   @default("none") // none, ok, error
+  error         String?
+  createdAt     DateTime @default(now())
 }

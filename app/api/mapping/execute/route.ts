@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionEmail } from "@/lib/session";
 import { admob, auditLog } from "@/lib/admob";
 import { db } from "@/lib/db";
-import { resolveScenario, detectAdFormat, detectFloorTier, detectInappObd, buildGroupName, CountryGroup, UIState } from "@/lib/scenarios";
-
-// Detect high floor from unit name
-function isHighFloor(name: string) {
-  return /high|_1\b|_2\b/.test(name.toLowerCase());
-}
+import { resolveScenario, detectAdFormat, detectFloorTier, buildGroupName, CountryGroup, UIState } from "@/lib/scenarios";
 
 export async function POST(req: NextRequest) {
   const email = await getSessionEmail();
@@ -145,6 +140,35 @@ export async function POST(req: NextRequest) {
         mappingResults[`${unit.adUnitId}_mintegral`] = { name: "", status: `error: ${e.message}` };
       }
     }
+
+    // Meta mapping
+    if (networks.includes("meta") && metaSource && unit.metaPlacementId) {
+      try {
+        const adapters = await admob.getAdapters(email, publisherId, metaSource.adSourceId);
+        const adapter = adapters.adapters?.[0];
+        if (adapter) {
+          const meta = adapter.adapterConfigMetadata ?? [];
+          const placementCfg = meta.find((m: any) =>
+            String(m.adapterConfigMetadataLabel ?? "").toLowerCase().includes("placement")
+          );
+
+          if (!placementCfg?.adapterConfigMetadataId) {
+            throw new Error("Meta adapter thiếu trường Placement ID");
+          }
+
+          const mapping = await admob.createAdUnitMapping(email, publisherId, fragment, {
+            adapterId: adapter.adapterId,
+            adUnitConfigurations: {
+              [placementCfg.adapterConfigMetadataId]: unit.metaPlacementId,
+            },
+            displayName: `${unit.name}_meta`,
+          });
+          mappingResults[`${unit.adUnitId}_meta`] = { name: mapping.name, status: "ok" };
+        }
+      } catch (e: any) {
+        mappingResults[`${unit.adUnitId}_meta`] = { name: "", status: `error: ${e.message}` };
+      }
+    }
   }
 
   // Step 3: Create mediation groups
@@ -164,7 +188,6 @@ export async function POST(req: NextRequest) {
     for (const unit of adUnits) {
       const format = unit.format ?? detectAdFormat(unit.name) ?? "INTERSTITIAL";
       const floorTier = detectFloorTier(unit.name);
-      const inappObd = detectInappObd(unit.name);
 
       const groupName = buildGroupName({
         appCode,
@@ -173,7 +196,6 @@ export async function POST(req: NextRequest) {
         adFormat: format,
         floorTier,
         countryGroupName: cg?.name,
-        inappObd: inappObd ?? undefined,
       });
 
       if (!groupMap.has(groupName)) {
@@ -237,6 +259,18 @@ export async function POST(req: NextRequest) {
         mediationGroupLines[String(lineIdx--)] = {
           displayName: "Mintegral bidding",
           adSourceId: mintegralSource.adSourceId,
+          cpmMode: "LIVE",
+          state: "ENABLED",
+          adUnitMappings: m,
+        };
+      }
+    }
+    if (metaSource && networks.includes("meta")) {
+      const m = buildAdUnitMappings("meta");
+      if (Object.keys(m).length > 0) {
+        mediationGroupLines[String(lineIdx--)] = {
+          displayName: "Meta bidding",
+          adSourceId: metaSource.adSourceId,
           cpmMode: "LIVE",
           state: "ENABLED",
           adUnitMappings: m,

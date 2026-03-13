@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 // ─── Design tokens ────────────────────────────────────────────
 const C = {
@@ -22,8 +22,35 @@ type AdUnit = {
   mintegralPlacementId?: string; mintegralUnitId?: string; mintegralAppId?: string;
   mintegralAppKey?: string; metaPlacementId?: string;
 };
+type AppRecord = {
+  id: string;
+  name: string;
+  platform: string;
+  admobStatus: string;
+  pangleStatus: string;
+  liftoffStatus: string;
+  mintegralStatus: string;
+  admobAppId: string | null;
+  pangleAppId: string | null;
+  liftoffAppId: string | null;
+  mintegralAppId: string | null;
+};
 type CG  = { name: string; mode: "INCLUDE"|"EXCLUDE"; countries: string[] };
 type UIS = { groupBy: "AD_FORMAT"|"AD_UNIT"; ecpmFloor: boolean; countryMode: "ALL"|"GROUPS" };
+
+const FORMAT_DETECT: [string, RegExp][] = [
+  ["INTERSTITIAL", /inter|full|fs/i],
+  ["REWARDED", /reward|rv|video/i],
+  ["APP_OPEN", /open|splash|aoa/i],
+  ["BANNER", /mrec|300x250|banner|top|bottom/i],
+  ["NATIVE", /native|feed|card/i],
+];
+
+const CSV_TEMPLATE = [
+  "ad_unit_name,admob_unit_id,ad_format,pangle_placement_id,liftoff_placement_id,mintegral_placement_id,meta_placement_id",
+  "inter_high,ca-app-pub-xxx/111,INTERSTITIAL,123456,lf_inter_001,mt_inter_001,meta_inter_001",
+  "rewarded_normal,ca-app-pub-xxx/222,REWARDED,123457,lf_reward_001,mt_reward_001,meta_reward_001",
+].join("\n");
 
 // ─── Scenario ─────────────────────────────────────────────────
 const LABELS: Record<string,string> = {
@@ -120,42 +147,131 @@ export default function MappingPage() {
   const [step,   setStep]   = useState<0|1|2|3>(0);
   const [units,  setUnits]  = useState<AdUnit[]>([]);
   const [code,   setCode]   = useState("");
-  const [ui,     setUi]     = useState<UIS>({groupBy:"AD_FORMAT",ecpmFloor:false,countryMode:"ALL"});
+  const [apps, setApps] = useState<AppRecord[]>([]);
+  const [appsLoading, setAppsLoading] = useState(true);
+  const [selectedAppId, setSelectedAppId] = useState("");
+  const [ui,     setUi]     = useState<UIS>({groupBy:"AD_FORMAT",ecpmFloor:true,countryMode:"ALL"});
   const [cgs,    setCgs]    = useState<CG[]>([]);
   const [nets,   setNets]   = useState(["pangle","liftoff","mintegral"]);
+  const [detectedNets, setDetectedNets] = useState<string[]>([]);
+  const [sdkKey, setSdkKey] = useState("");
   const [prev,   setPrev]   = useState<any>(null);
   const [res,    setRes]    = useState<any>(null);
   const [loading,setLoading]= useState(false);
   const [err,    setErr]    = useState<string|null>(null);
   const [drag,   setDrag]   = useState(false);
+  const [autoLoaded, setAutoLoaded] = useState(false);
   const fRef = useRef<HTMLInputElement>(null);
+
+  useEffect(()=>{
+    fetch("/api/apps")
+      .then((r)=>r.json())
+      .then((d)=>{ if (d.apps) setApps(d.apps); })
+      .catch(()=>{})
+      .finally(()=>setAppsLoading(false));
+  },[]);
+
+  const selectedApp = apps.find((a)=>a.id===selectedAppId);
+
+  // Auto-load from sessionStorage (from ad unit creation flow)
+  useEffect(()=>{
+    try {
+      const raw = sessionStorage.getItem("adunit_mapping_data");
+      const appRaw = sessionStorage.getItem("adunit_mapping_app");
+      if(raw){
+        const data = JSON.parse(raw) as Array<Record<string,string>>;
+        const parsed: AdUnit[] = data.map(r=>({
+          name: r.ad_unit_name??"",
+          adUnitId: r.admob_unit_id??"",
+          format: r.ad_format,
+          panglePlacementId: r.pangle_placement_id,
+          liftoffReferenceId: r.liftoff_placement_id,
+          mintegralPlacementId: r.mintegral_placement_id,
+          metaPlacementId: r.meta_placement_id,
+        })).filter(u=>u.name&&u.adUnitId);
+        if(parsed.length>0){
+          setUnits(parsed);
+          setAutoLoaded(true);
+          if(appRaw){
+            try {
+              const app = JSON.parse(appRaw);
+              if(app.name) setCode(app.name);
+              if(app.id) setSelectedAppId(app.id);
+            } catch{}
+          }
+        }
+        sessionStorage.removeItem("adunit_mapping_data");
+        sessionStorage.removeItem("adunit_mapping_app");
+      }
+    } catch{}
+  },[]);
+
+  useEffect(()=>{
+    if (!selectedApp) return;
+    setCode((prevCode)=>prevCode || selectedApp.name);
+  },[selectedApp]);
 
   const sc = resolve(ui);
   const dupNames = cgs.map(g=>g.name).filter((n,i,a)=>n&&a.indexOf(n)!==i);
-  const canPrev  = ui.countryMode==="ALL" || (cgs.length>0 && cgs.every(g=>g.name&&g.countries.length>0) && !dupNames.length);
+  const networkReady = {
+    pangle: units.some((u)=>!!u.panglePlacementId),
+    liftoff: units.some((u)=>!!u.liftoffReferenceId),
+    mintegral: units.some((u)=>!!u.mintegralPlacementId),
+    meta: units.some((u)=>!!u.metaPlacementId),
+  };
+  const canPrev  = (ui.countryMode==="ALL" || (cgs.length>0 && cgs.every(g=>g.name&&g.countries.length>0) && !dupNames.length))
+    && !!selectedAppId
+    && units.length>0
+    && !!code.trim()
+    && nets.length>0
+    && nets.some((n)=>networkReady[n as keyof typeof networkReady]);
 
   const parseCSV = useCallback((text:string)=>{
-    const lines = text.trim().split("\n");
+    const lines = text.trim().split("\n").filter(Boolean);
+    if (!lines.length) return;
     const hdr   = lines[0]?.split(",").map(h=>h.trim().replace(/^"|"$/g,"").toLowerCase());
     if(!hdr) return;
     const has   = hdr.some(h=>["ad_unit_name","admob_unit_id"].includes(h));
     const data  = has ? lines.slice(1) : lines;
     const ix    = (k:string)=>hdr.indexOf(k);
+    const detectFormat = (name:string) => {
+      for (const [fmt, re] of FORMAT_DETECT) if (re.test(name)) return fmt;
+      return "INTERSTITIAL";
+    };
+
     const parsed: AdUnit[] = data.map(line=>{
       const c=line.split(",").map(x=>x.trim().replace(/^"|"$/g,""));
       const g=(k:string,fb?:number)=>{ const i=ix(k); return i>=0?c[i]||undefined:(fb!==undefined?c[fb]:undefined); };
+      const name = g("ad_unit_name",0)??"";
+      const format = g("ad_format") ?? detectFormat(name);
       return {
-        name:                g("ad_unit_name",0)??"",
+        name,
         adUnitId:            g("admob_unit_id",1)??"",
-        format:              g("ad_format"),
+        format,
         panglePlacementId:   g("pangle_placement_id"),
         liftoffReferenceId:  g("liftoff_placement_id"),
         mintegralPlacementId:g("mintegral_placement_id"),
         metaPlacementId:     g("meta_placement_id"),
       };
     }).filter(u=>u.name&&u.adUnitId);
+
+    const detected = new Set<string>();
+    if (parsed.some((u)=>u.panglePlacementId)) detected.add("pangle");
+    if (parsed.some((u)=>u.liftoffReferenceId)) detected.add("liftoff");
+    if (parsed.some((u)=>u.mintegralPlacementId)) detected.add("mintegral");
+    if (parsed.some((u)=>u.metaPlacementId)) detected.add("meta");
+
     setUnits(parsed);
+    setDetectedNets([...detected]);
+    if (detected.size > 0) setNets([...detected]);
   },[]);
+
+  const downloadTemplate = () => {
+    const a = document.createElement("a");
+    a.href = "data:text/csv," + encodeURIComponent(CSV_TEMPLATE);
+    a.download = "mapping_template.csv";
+    a.click();
+  };
 
   const handleFile=(f:File)=>{const r=new FileReader();r.onload=e=>parseCSV(e.target?.result as string);r.readAsText(f);};
 
@@ -173,13 +289,22 @@ export default function MappingPage() {
     setLoading(true);setErr(null);setStep(3);
     try{
       const r=await fetch("/api/mapping/execute",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({uiState:ui,adUnits:units,appCode:code,countryGroups:cgs,networks:nets})});
+        body:JSON.stringify({
+          uiState:ui,
+          adUnits:units,
+          appCode:code,
+          countryGroups:cgs,
+          networks:nets,
+          sdkKeyApplovin:sdkKey||undefined,
+          appId:selectedAppId,
+          appName:selectedApp?.name,
+        })});
       const d=await r.json(); if(!r.ok) throw new Error(d.error??"Execute thất bại");
       setRes(d);
     }catch(e:any){setErr(e.message);}finally{setLoading(false);}
   };
 
-  const reset=()=>{setStep(0);setUnits([]);setPrev(null);setRes(null);setErr(null);};
+  const reset=()=>{setStep(0);setUnits([]);setPrev(null);setRes(null);setErr(null);setDetectedNets([]);};
 
   const SL = ["Upload CSV","Config","Preview","Kết quả"];
 
@@ -189,7 +314,7 @@ export default function MappingPage() {
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap');
         *{box-sizing:border-box;}
         input::placeholder{color:${C.text3};}
-        input:focus,textarea:focus{outline:none!important;border-color:${C.accent}!important;}
+        input:focus,textarea:focus,select:focus{outline:none!important;border-color:${C.accent}!important;}
         ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:${C.border2};border-radius:2px;}
         table{border-collapse:collapse;width:100%;}
         th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${C.text3};
@@ -240,7 +365,39 @@ export default function MappingPage() {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div>
               <div style={s.card}>
-                <div style={s.cH}><span style={s.cT}>Upload CSV mapping</span></div>
+                <div style={s.cH}><span style={s.cT}>Chọn app để mapping</span></div>
+                <div style={s.cB}>
+                  {appsLoading ? (
+                    <div style={{height:40,background:C.border,borderRadius:8,opacity:.5}}/>
+                  ) : (
+                    <>
+                      <label style={s.lbl}>App <span style={{color:C.red}}>*</span></label>
+                      <select
+                        style={{...s.inp,cursor:"pointer"}}
+                        value={selectedAppId}
+                        onChange={(e)=>setSelectedAppId(e.target.value)}>
+                        <option value="">- Chọn app -</option>
+                        {apps.map((a)=>(
+                          <option key={a.id} value={a.id}>{a.name} ({a.platform})</option>
+                        ))}
+                      </select>
+                      {selectedApp && (
+                        <div style={{marginTop:10,fontSize:11.5,color:C.text2,lineHeight:1.6}}>
+                          Đang mapping cho: <strong>{selectedApp.name}</strong> ({selectedApp.platform})
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div style={s.card}>
+                <div style={s.cH}>
+                  <span style={s.cT}>Upload CSV mapping</span>
+                  <button style={{...s.btnG,fontSize:11,padding:"5px 10px"}} onClick={downloadTemplate}>
+                    ⬇ Tải CSV mẫu
+                  </button>
+                </div>
                 <div style={s.cB}>
                   <input type="file" ref={fRef} style={{display:"none"}} accept=".csv"
                     onChange={e=>e.target.files?.[0]&&handleFile(e.target.files[0])}/>
@@ -258,7 +415,12 @@ export default function MappingPage() {
                   </div>
                   {units.length>0&&(
                     <div style={{...s.alrt(C.accent,C.accentDim,"rgba(79,240,180,0.3)"),marginTop:12}}>
-                      ✓ Đã parse {units.length} ad units
+                      ✓ Đã parse {units.length} ad units{autoLoaded?" (auto-load từ Ad Unit Creation)":""}
+                    </div>
+                  )}
+                  {detectedNets.length>0&&(
+                    <div style={{...s.alrt(C.blue,C.blueDim,"rgba(37,99,235,.3)"),marginBottom:0}}>
+                      Đã detect network từ CSV: {detectedNets.join(", ")}
                     </div>
                   )}
                 </div>
@@ -277,7 +439,7 @@ export default function MappingPage() {
                 </div>
               </div>
 
-              {units.length>0&&code&&(
+              {units.length>0&&code&&selectedAppId&&(
                 <button style={{...s.btnP,width:"100%",justifyContent:"center",padding:"13px"}}
                   onClick={()=>setStep(1)}>
                   Cấu hình kịch bản →
@@ -308,9 +470,9 @@ export default function MappingPage() {
                 ))}
                 <div style={{marginTop:12,padding:"10px 12px",background:C.ink2,borderRadius:7,
                   fontSize:10.5,color:C.text3,fontFamily:FM,lineHeight:1.8}}>
-                  ad_unit_name,admob_unit_id,ad_format<br/>
-                  inter_high,ca-app-pub-xxx/111,INTERSTITIAL<br/>
-                  rewarded_normal,ca-app-pub-xxx/222,REWARDED
+                  ad_unit_name,admob_unit_id,ad_format,pangle_placement_id,liftoff_placement_id,mintegral_placement_id,meta_placement_id<br/>
+                  inter_high,ca-app-pub-xxx/111,INTERSTITIAL,123456,lf_inter_001,mt_inter_001,meta_inter_001<br/>
+                  rewarded_normal,ca-app-pub-xxx/222,REWARDED,123457,lf_reward_001,mt_reward_001,meta_reward_001
                 </div>
               </div>
             </div>
@@ -320,6 +482,12 @@ export default function MappingPage() {
         {/* ═══ STEP 1 — Config ═══ */}
         {step===1&&(
           <div style={{maxWidth:680}}>
+            <div style={s.alrt(C.blue,C.blueDim,"rgba(37,99,235,.25)")}>
+              📱 App mapping: <strong>{selectedApp?.name ?? "-"}</strong>
+              &nbsp;•&nbsp; Platform: {selectedApp?.platform ?? "-"}
+              &nbsp;•&nbsp; CSV rows: {units.length}
+            </div>
+
             <div style={s.card}>
               <div style={s.cH}>
                 <span style={s.cT}>Kịch bản tạo Mediation Group</span>
@@ -361,9 +529,10 @@ export default function MappingPage() {
                     )}
                   </div>
                   <div onClick={()=>ui.groupBy!=="AD_UNIT"&&setUi(u=>({...u,ecpmFloor:!u.ecpmFloor}))}
+                    title={ui.groupBy==="AD_UNIT"?"Ad unit đã có floor tier trong tên. Phân biệt floor là bắt buộc.":""}
                     style={{display:"flex",alignItems:"center",gap:10,
                       cursor:ui.groupBy==="AD_UNIT"?"not-allowed":"pointer",
-                      opacity:ui.groupBy==="AD_UNIT"?.55:1,userSelect:"none"}}>
+                      opacity:ui.groupBy==="AD_UNIT"?.55:1,userSelect:"none",position:"relative"}}>
                     <div style={{width:16,height:16,borderRadius:4,flexShrink:0,
                       border:`1.5px solid ${ui.ecpmFloor&&ui.groupBy!=="AD_UNIT"?C.accent:C.border2}`,
                       background:ui.ecpmFloor?C.accent:"transparent",
@@ -376,7 +545,7 @@ export default function MappingPage() {
                   </div>
                   {ui.groupBy==="AD_UNIT"&&(
                     <div style={{marginTop:6,fontSize:11,color:C.text3,fontStyle:"italic",paddingLeft:26}}>
-                      Ad unit đã có floor tier trong tên — luôn phân biệt khi group theo ad unit.
+                      Ad unit đã có floor tier trong tên — eCPM floor luôn được phân biệt khi group theo ad unit.
                     </div>
                   )}
                 </div>
@@ -433,14 +602,16 @@ export default function MappingPage() {
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   {["pangle","liftoff","mintegral","meta"].map(n=>{
                     const on=nets.includes(n);
+                    const ready = networkReady[n as keyof typeof networkReady];
                     const ic: Record<string,string>={pangle:"🌐",liftoff:"🚀",mintegral:"📊",meta:"📘"};
                     return (
                       <div key={n}
-                        onClick={()=>setNets(p=>on?p.filter(x=>x!==n):[...p,n])}
+                        onClick={()=>ready&&setNets(p=>on?p.filter(x=>x!==n):[...p,n])}
                         style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",
-                          borderRadius:8,cursor:"pointer",userSelect:"none",
+                          borderRadius:8,cursor:ready?"pointer":"not-allowed",userSelect:"none",
                           border:`1px solid ${on?C.accent:C.border2}`,
-                          background:on?C.accentDim:C.ink2}}>
+                          background:on?C.accentDim:C.ink2,
+                          opacity:ready?1:0.5}}>
                         <div style={{width:16,height:16,borderRadius:4,
                           border:`1.5px solid ${on?C.accent:C.border2}`,
                           background:on?C.accent:"transparent",
@@ -449,10 +620,25 @@ export default function MappingPage() {
                         </div>
                         <span style={{fontSize:14}}>{ic[n]}</span>
                         <span style={{fontSize:13,fontWeight:500,textTransform:"capitalize",color:on?C.text:C.text2}}>{n}</span>
+                        <span style={{fontSize:10,color:C.text3,marginLeft:"auto"}}>{ready?"ID OK":"Thiếu ID"}</span>
                       </div>
                     );
                   })}
                 </div>
+                <div style={{fontSize:11,color:C.text3,marginTop:8,lineHeight:1.6}}>
+                  Chỉ network có placement/reference ID trong CSV mới bật được để mapping bidding ad source.
+                </div>
+              </div>
+            </div>
+
+            {/* AppLovin SDK Key */}
+            <div style={s.card}>
+              <div style={s.cH}><span style={s.cT}>AppLovin SDK Key</span></div>
+              <div style={s.cB}>
+                <label style={s.lbl}>SDK Key (Optional)</label>
+                <input style={{...s.inp,fontFamily:FM,fontSize:11}} placeholder="AppLovin SDK Key cho mediation group"
+                  value={sdkKey} onChange={e=>setSdkKey(e.target.value)}/>
+                <div style={{fontSize:11,color:C.text3,marginTop:5}}>Cần thiết nếu sử dụng AppLovin MAX mediation.</div>
               </div>
             </div>
 
@@ -473,6 +659,9 @@ export default function MappingPage() {
         {/* ═══ STEP 2 — Preview ═══ */}
         {step===2&&prev&&(
           <div>
+            <div style={{...s.alrt(C.blue,C.blueDim,"rgba(37,99,235,.25)")}}>
+              Đang preview cho app: <strong>{selectedApp?.name ?? "-"}</strong>
+            </div>
             <div style={{display:"flex",gap:10,marginBottom:20}}>
               {[{l:"Kịch bản",v:prev.scenario,c:C.blue},{l:"Groups",v:prev.groupCount,c:C.accent},{l:"Ad Units",v:units.length,c:C.yellow}].map(x=>(
                 <div key={x.l} style={{padding:"12px 18px",background:C.panel,border:`1px solid ${C.border}`,borderRadius:10}}>

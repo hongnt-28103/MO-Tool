@@ -76,7 +76,7 @@ export function buildGroupName(params: {
   countryGroupName?: string;
   inappObd?: "inapp" | "obd";
 }): string {
-  const { appCode, scenario, adUnitName, adFormat, floorTier, countryGroupName, inappObd } = params;
+  const { appCode, scenario, adUnitName, adFormat, floorTier, countryGroupName } = params;
   switch (scenario) {
     case "S1":
     case "S4":
@@ -92,12 +92,6 @@ export function buildGroupName(params: {
         : `${appCode} - ${adFormat?.toLowerCase()}`;
     case "S3":
     case "S6": {
-      // Check if Tera inapp/obd
-      if (inappObd) {
-        return countryGroupName
-          ? `${appCode} - ${adFormat?.toLowerCase()} - ${inappObd} - ${countryGroupName}`
-          : `${appCode} - ${adFormat?.toLowerCase()} - ${inappObd}`;
-      }
       // Standard: mã app - ad format - high/normal [- country_group]
       const tier = floorTier === "high" ? "high" : "normal";
       return countryGroupName
@@ -117,12 +111,15 @@ export function estimateGroupCount(params: {
 }): number {
   const { scenario, adUnitCount, formats, floorTiers, countryGroups } = params;
   const cg = countryGroups.length || 1;
+  const hasHigh = floorTiers.includes("high");
+  const hasNormal = floorTiers.some((t) => t !== "high");
+  const highNormalBucketCount = Number(hasHigh) + Number(hasNormal);
   switch (scenario) {
     case "S1": return adUnitCount;
     case "S2": return formats.length;
-    case "S3": return formats.length * new Set(floorTiers).size;
+    case "S3": return formats.length * Math.max(1, highNormalBucketCount);
     case "S4": return adUnitCount * cg;
     case "S5": return formats.length * cg;
-    case "S6": return formats.length * new Set(floorTiers).size * cg;
+    case "S6": return formats.length * Math.max(1, highNormalBucketCount) * cg;
   }
 }
