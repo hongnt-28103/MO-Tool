@@ -56,12 +56,17 @@ model App {
   liftoffAppId     String?
   liftoffStatus    String   @default("none") // none | ok | error
   liftoffError     String?
+  liftoffCategory  String?
+  liftoffCoppa     Boolean  @default(true)
 
   // Mintegral
-  mintegralAppId   String?
-  mintegralAppKey  String?
-  mintegralStatus  String   @default("none") // none | ok | error
-  mintegralError   String?
+  mintegralAppId        String?
+  mintegralAppKey       String?
+  mintegralStatus       String   @default("none") // none | ok | error
+  mintegralError        String?
+  mintegralAndroidStore String?
+  mintegralStoreName    String?
+  mintegralPreviewLink  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

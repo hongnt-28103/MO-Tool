@@ -267,9 +267,14 @@ export async function POST(req: NextRequest) {
       liftoffAppId: results.liftoff.appId ?? null,
       liftoffStatus: results.liftoff.status,
       liftoffError: results.liftoff.error ?? null,
+      liftoffCategory: input.targets.liftoff ? (input.liftoffCategory ?? null) : null,
+      liftoffCoppa: input.liftoffCoppa ?? true,
       mintegralAppId: results.mintegral.appId ?? null,
       mintegralStatus: results.mintegral.status,
       mintegralError: results.mintegral.error ?? null,
+      mintegralAndroidStore: input.targets.minter ? (input.mintegralAndroidStore ?? null) : null,
+      mintegralStoreName: input.targets.minter ? (input.mintegralStoreName ?? null) : null,
+      mintegralPreviewLink: input.targets.minter ? (input.mintegralPreviewLink ?? null) : null,
     },
   });
 
