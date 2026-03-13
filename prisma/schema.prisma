@@ -30,3 +30,39 @@ model AuditLog {
   statusCode  Int
   createdAt   DateTime @default(now())
 }
+
+model App {
+  id        String   @id @default(cuid())
+  email     String
+  name      String
+  platform  String   // "ANDROID" | "IOS"
+  isLive    Boolean  @default(false)
+  storeUrl  String?
+  bundleId  String?
+
+  // AdMob
+  admobPublisherId String?
+  admobAppId       String?
+  admobStatus      String   @default("none") // none | ok | error
+  admobError       String?
+
+  // Pangle
+  pangleAppId      String?
+  pangleCategoryCode Int?
+  pangleStatus     String   @default("none") // none | ok | verifying | error
+  pangleError      String?
+
+  // Liftoff
+  liftoffAppId     String?
+  liftoffStatus    String   @default("none") // none | ok | error
+  liftoffError     String?
+
+  // Mintegral
+  mintegralAppId   String?
+  mintegralAppKey  String?
+  mintegralStatus  String   @default("none") // none | ok | error
+  mintegralError   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

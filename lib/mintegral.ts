@@ -38,19 +38,29 @@ export const mintegral = {
   async createApp(params: {
     appName: string;
     os: "ANDROID" | "IOS";
-    packageName: string;
-    isLiveInStore?: boolean;
+    isLive: boolean;
+    packageName?: string;   // package name (Android) or bundle ID (iOS)
     storeUrl?: string;
+    storeName?: string;     // Android "Other Store" — store display name
+    previewLink?: string;   // Android "Other Store" — preview/download link
+    appIdOnStore?: string;  // iOS — numeric App Store ID
   }) {
-    return mintegralPost("/app/open_api_create", {
+    const fields: Record<string, unknown> = {
       app_name: params.appName,
       os: params.os,
-      package: params.packageName,
-      is_live_in_store: params.isLiveInStore ? 1 : 0,
-      ...(params.isLiveInStore && params.storeUrl ? { store_url: params.storeUrl } : {}),
+      is_live_in_store: params.isLive ? 1 : 0,
       coppa: 0,
       mediation_platform: 14,
-    });
+    };
+    // Package / bundle ID always included when provided
+    if (params.packageName) fields.package = params.packageName;
+    if (params.isLive) {
+      if (params.storeUrl)   fields.store_url    = params.storeUrl;
+      if (params.storeName)  fields.store_name   = params.storeName;
+      if (params.previewLink) fields.preview_link = params.previewLink;
+      if (params.appIdOnStore) fields.app_id      = params.appIdOnStore;
+    }
+    return mintegralPost("/app/open_api_create", fields);
   },
 
   async createPlacement(params: {

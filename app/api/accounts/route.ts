@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionEmail } from "@/lib/session";
 import { admob } from "@/lib/admob";
-import { resolvePublisher } from "@/lib/whitelist";
+import { resolvePublisher, resolvePublisherByEmail } from "@/lib/whitelist";
 import { db } from "@/lib/db";
 
 export async function GET() {
@@ -9,15 +9,34 @@ export async function GET() {
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const data = await admob.getAccounts(email);
-    const result = resolvePublisher(data.account ?? []);
-
-    if (result.status === "no_access") {
-      return NextResponse.json({ error: result.message }, { status: 403 });
+    // First, try to auto-detect based on email
+    let result = resolvePublisherByEmail(email);
+    if (result) {
+      // Save to DB
+      await db.userToken.update({
+        where: { email },
+        data: {
+          publisherId: result.publisherId,
+          publisherName: result.publisherName,
+        },
+      });
+      return NextResponse.json({
+        publisherId: result.publisherId,
+        publisherName: result.publisherName,
+        email,
+        autoDetected: true,
+      });
     }
-    if (result.status === "multiple") {
+
+    // Fallback to permission-based detection
+    const data = await admob.getAccounts(email);
+    const resolveResult = resolvePublisher(data.account ?? []);
+    if (resolveResult.status === "no_access") {
+      return NextResponse.json({ error: resolveResult.message }, { status: 403 });
+    }
+    if (resolveResult.status === "multiple") {
       return NextResponse.json(
-        { error: result.message, matched: result.matched },
+        { error: resolveResult.message, matched: resolveResult.matched },
         { status: 409 }
       );
     }
@@ -26,15 +45,16 @@ export async function GET() {
     await db.userToken.update({
       where: { email },
       data: {
-        publisherId: result.publisherId,
-        publisherName: result.publisherName,
+        publisherId: resolveResult.publisherId,
+        publisherName: resolveResult.publisherName,
       },
     });
 
     return NextResponse.json({
-      publisherId: result.publisherId,
-      publisherName: result.publisherName,
+      publisherId: resolveResult.publisherId,
+      publisherName: resolveResult.publisherName,
       email,
+      autoDetected: false,
     });
   } catch (e: any) {
     if (e.message === "ADMOB_FORBIDDEN")
