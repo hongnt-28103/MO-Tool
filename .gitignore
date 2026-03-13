@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production
+.next/
+out/
+build/
+
+# Environment — NEVER COMMIT
+.env
+.env.local
+.env.*.local
+*.env
+
+# Database
+*.db
+*.db-journal
+/prisma/*.db
+
+# Misc
+.DS_Store
+*.pem
+.vercel
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
