@@ -55,11 +55,18 @@ export const mintegral = {
     // Package / bundle ID always included when provided
     if (params.packageName) fields.package = params.packageName;
     if (params.appIdOnStore) fields.app_id = params.appIdOnStore;
-    if (params.isLive) {
-      if (params.storeUrl)   fields.store_url    = params.storeUrl;
+    
+    // For live apps: include store URL
+    if (params.isLive && params.storeUrl) {
+      fields.store_url = params.storeUrl;
+    }
+    
+    // For NOT live apps (other stores): include store name and preview link
+    if (!params.isLive) {
       if (params.storeName)  fields.store_name   = params.storeName;
       if (params.previewLink) fields.preview_link = params.previewLink;
     }
+    
     return mintegralPost("/app/open_api_create", fields);
   },
 

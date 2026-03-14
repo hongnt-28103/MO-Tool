@@ -632,7 +632,11 @@ function AdUnitsContent() {
                 <div style={{padding:"18px"}}>
                   <div style={{fontSize:12.5,color:C.text2,lineHeight:1.6}}>
                     Rule: <strong>1 ad unit → 1 Ad Unit ID</strong><br/>
-                    <span style={{color:C.text3}}>Ad units có tier <span style={{color:C.red,fontWeight:600}}>HIGH</span> sẽ tự động bật eCPM Floor → Google Optimized → High Floor.</span>
+                    <span style={{color:C.text3}}>
+                      Tier <span style={{color:C.red,fontWeight:600}}>HIGH</span> → Google Optimized / High Floor;
+                      &nbsp;<span style={{color:C.yellow,fontWeight:600}}>MED</span> → Google Optimized / Medium Floor;
+                      &nbsp;<span style={{color:C.accent,fontWeight:600}}>AP</span> → Google Optimized / All Prices.
+                    </span>
                   </div>
                   <div style={{marginTop:10,display:"flex",gap:6,flexWrap:"wrap"}}>
                     {Object.entries(valid.reduce((a,u)=>{a[u.tier]=(a[u.tier]??0)+1;return a;},{} as Record<string,number>)).map(([tier,cnt])=>(
@@ -730,6 +734,13 @@ function AdUnitsContent() {
               ✓ Hoàn tất! Đã tạo ad units/placements cho {enabledPlatforms.join(", ")}.
             </div>
 
+            {/* Floor warning banner */}
+            {results.some(r=>r.admobStatus==="ok"&&r.admobError)&&(
+              <div style={alrt("#e67e22","rgba(230,126,34,.08)","rgba(230,126,34,.3)")}>
+                ⚠ {results.filter(r=>r.admobStatus==="ok"&&r.admobError).length}/{results.length} ad units: eCPM floor chưa set được qua API – cần vào AdMob UI để set thủ công (Advanced settings → eCPM floor → Google optimized).
+              </div>
+            )}
+
             {/* Results table */}
             <div style={card}>
               <div style={cH}>
@@ -756,9 +767,21 @@ function AdUnitsContent() {
                         {platforms.admob&&(
                           <td>
                             {r.admobStatus==="ok"
-                              ?<span style={{fontFamily:FM,fontSize:10,color:C.accent}} title={r.admobAdUnitId}>{r.admobAdUnitId?.split("/").pop()}</span>
+                              ?<div style={{display:"flex",flexDirection:"column",gap:3}}>
+                                <span style={{fontFamily:FM,fontSize:10,color:C.accent}} title={r.admobAdUnitId}>{r.admobAdUnitId?.split("/").pop()}</span>
+                                {r.admobError&&(
+                                  <span style={{fontSize:9,color:"#e67e22",lineHeight:1.35,maxWidth:240,display:"inline-block"}}>
+                                    ⚠ {r.admobError}
+                                  </span>
+                                )}
+                              </div>
                               :r.admobStatus==="error"
-                                ?<span style={{...chip(C.red,C.redDim),fontSize:9}} title={r.admobError}>✗ Error</span>
+                                ?<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                                  <span style={{...chip(C.red,C.redDim),fontSize:9}} title={r.admobError}>✗ Error</span>
+                                  <span style={{fontSize:10,color:C.red,maxWidth:220,display:"inline-block",lineHeight:1.35}}>
+                                    {(r.admobError ?? "").slice(0, 140)}
+                                  </span>
+                                </div>
                                 :<span style={{color:C.text3}}>—</span>
                             }
                           </td>

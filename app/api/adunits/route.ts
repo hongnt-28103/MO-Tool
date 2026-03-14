@@ -15,6 +15,12 @@ const AD_TYPES: Record<string, string[]> = {
   APP_OPEN: ["RICH_MEDIA", "VIDEO"],
 };
 
+function buildFloorSetting(tier: string): { eCpmFloorState: string; method: string } {
+  if (tier === "high") return { eCpmFloorState: "GOOGLE_OPTIMIZED", method: "HIGH_FLOOR" };
+  if (tier === "med")  return { eCpmFloorState: "GOOGLE_OPTIMIZED", method: "MEDIUM_FLOOR" };
+  return { eCpmFloorState: "GOOGLE_OPTIMIZED", method: "ALL_PRICES" };
+}
+
 type PlatformRule = "per_unit" | "per_format";
 
 export async function GET(req: NextRequest) {
@@ -100,28 +106,31 @@ export async function POST(req: NextRequest) {
 
     if (platforms.admob) {
       try {
-        // Build AdMob create body
-        const admobBody: Record<string, unknown> = {
+        // Step 1: Create ad unit (without floor – API doesn't accept it on create)
+        const createBody = {
           displayName: unit.name,
           adFormat: unit.format,
           appId: app.admobAppId,
           adTypes: AD_TYPES[unit.format] ?? ["RICH_MEDIA", "VIDEO"],
         };
-
-        // If "high" tier → set eCPM floor: Google optimized + High floor
-        if (unit.tier === "high") {
-          admobBody.rewardSettings = undefined; // keep API clean
-          admobBody.adUnitSizeConfig = undefined;
-          // eCPM floor config: highFloor = true means Google optimized high floor
-          admobBody.eCpmFloorSettings = {
-            eCpmFloorState: "GOOGLE_OPTIMIZED",
-            method: "HIGH",
-          };
-        }
-
-        const res = await admob.createAdUnit(email, publisherId, admobBody);
-        result.admobAdUnitId = res.adUnitId ?? res.name;
+        const res = await admob.createAdUnit(email, publisherId, createBody);
+        const adUnitName: string = res.name; // e.g. accounts/xxx/adUnits/yyy
+        result.admobAdUnitId = res.adUnitId ?? adUnitName;
         result.admobStatus = "ok";
+
+        // Step 2: Try to PATCH eCPM floor onto the newly created ad unit
+        try {
+          const floorSetting = buildFloorSetting(unit.tier);
+          await admob.updateAdUnit(
+            email, publisherId, adUnitName,
+            { name: adUnitName, eCpmFloorSettings: floorSetting },
+            "eCpmFloorSettings",
+          );
+          result.admobError = undefined; // floor applied OK
+        } catch {
+          // PATCH failed – ad unit exists but floor not set via API
+          result.admobError = `Ad unit tạo OK, nhưng eCPM floor (${unit.tier}) chưa set được qua API – cần set thủ công trên AdMob UI.`;
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         result.admobStatus = "error";

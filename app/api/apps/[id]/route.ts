@@ -123,8 +123,10 @@ export async function PATCH(
         appName: app.name,
         os: platform,
         isLive,
-        packageName: isLive ? app.bundleId ?? undefined : undefined,
+        packageName: app.bundleId ?? undefined,
         storeUrl: isLive ? app.storeUrl ?? undefined : undefined,
+        storeName: app.mintegralStoreName ?? undefined,
+        previewLink: app.mintegralPreviewLink ?? undefined,
       });
       const appId = result?.data?.app_id != null ? String(result.data.app_id) : null;
       updateData = { mintegralAppId: appId, mintegralStatus: "ok", mintegralError: null };

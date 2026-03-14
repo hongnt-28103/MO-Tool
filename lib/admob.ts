@@ -68,6 +68,12 @@ export const admob = {
       body: JSON.stringify(body),
     }),
 
+  updateAdUnit: (email: string, publisherId: string, adUnitName: string, body: object, updateMask: string) =>
+    admobFetch(email, `/v1beta/${adUnitName}?updateMask=${encodeURIComponent(updateMask)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   getAdSources: (email: string, publisherId: string) =>
     admobFetch(email, `/v1beta/accounts/${publisherId}/adSources`),
 

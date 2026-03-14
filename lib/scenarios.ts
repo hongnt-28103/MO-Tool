@@ -39,8 +39,16 @@ export type FloorTier = "high" | "med" | "ap";
 /** Detect floor tier from ad unit name */
 export function detectFloorTier(name: string): FloorTier {
   const lower = name.toLowerCase();
-  if (/_high\b|_1\b|_2\b/.test(lower)) return "high";
-  if (/_med\b|_medium\b/.test(lower)) return "med";
+
+  // High floor keywords/suffixes: _high, -high, high, _1, _2
+  if (/(^|[-_\s])high\b|_1\b|_2\b/.test(lower)) return "high";
+
+  // Medium floor keywords/suffixes: _med, -med, medium
+  if (/(^|[-_\s])med\b|(^|[-_\s])medium\b/.test(lower)) return "med";
+
+  // Explicit all-price markers
+  if (/(^|[-_\s])ap\b|all[\s_-]?price/.test(lower)) return "ap";
+
   return "ap";
 }
 
