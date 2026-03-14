@@ -47,9 +47,8 @@ const FORMAT_DETECT: [string, RegExp][] = [
 ];
 
 const CSV_TEMPLATE = [
-  "ad_unit_name,admob_unit_id,ad_format,pangle_placement_id,liftoff_placement_id,mintegral_placement_id,meta_placement_id",
-  "inter_high,ca-app-pub-xxx/111,INTERSTITIAL,123456,lf_inter_001,mt_inter_001,meta_inter_001",
-  "rewarded_normal,ca-app-pub-xxx/222,REWARDED,123457,lf_reward_001,mt_reward_001,meta_reward_001",
+  "ad_unit_name,admob_ad_unit_id,mintegral_app_key,mintegral_app_id,mintegral_placement_id,mintegral_ad_unit_id,liftoff_app_id,liftoff_placement_reference_id,pangle_app_id,pangle_ad_placement_id,meta_placement_id",
+  "101-spl-a-banner-new,ca-app-pub-xxx/111,mt_app_key_001,mt_app_id_001,mt_placement_001,mt_unit_001,lf_app_001,lf_ref_001,pa_app_001,123456,meta_placement_001",
 ].join("\n");
 
 // ─── Scenario ─────────────────────────────────────────────────
@@ -218,6 +217,7 @@ export default function MappingPage() {
     liftoff: units.some((u)=>!!u.liftoffReferenceId),
     mintegral: units.some((u)=>!!u.mintegralPlacementId),
     meta: units.some((u)=>!!u.metaPlacementId),
+    applovin: !!sdkKey,
   };
   const canPrev  = (ui.countryMode==="ALL" || (cgs.length>0 && cgs.every(g=>g.name&&g.countries.length>0) && !dupNames.length))
     && !!selectedAppId
@@ -231,7 +231,7 @@ export default function MappingPage() {
     if (!lines.length) return;
     const hdr   = lines[0]?.split(",").map(h=>h.trim().replace(/^"|"$/g,"").toLowerCase());
     if(!hdr) return;
-    const has   = hdr.some(h=>["ad_unit_name","admob_unit_id"].includes(h));
+    const has   = hdr.some(h=>["ad_unit_name","admob_unit_id","admob_ad_unit_id"].includes(h));
     const data  = has ? lines.slice(1) : lines;
     const ix    = (k:string)=>hdr.indexOf(k);
     const detectFormat = (name:string) => {
@@ -246,12 +246,16 @@ export default function MappingPage() {
       const format = g("ad_format") ?? detectFormat(name);
       return {
         name,
-        adUnitId:            g("admob_unit_id",1)??"",
+        adUnitId:              g("admob_ad_unit_id") ?? g("admob_unit_id",1) ?? "",
         format,
-        panglePlacementId:   g("pangle_placement_id"),
-        liftoffReferenceId:  g("liftoff_placement_id"),
-        mintegralPlacementId:g("mintegral_placement_id"),
-        metaPlacementId:     g("meta_placement_id"),
+        panglePlacementId:     g("pangle_ad_placement_id") ?? g("pangle_placement_id"),
+        liftoffReferenceId:    g("liftoff_placement_reference_id") ?? g("liftoff_placement_id"),
+        liftoffAppId:          g("liftoff_app_id"),
+        mintegralPlacementId:  g("mintegral_placement_id"),
+        mintegralUnitId:       g("mintegral_ad_unit_id") ?? g("mintegral_unit_id"),
+        mintegralAppId:        g("mintegral_app_id"),
+        mintegralAppKey:       g("mintegral_app_key"),
+        metaPlacementId:       g("meta_placement_id"),
       };
     }).filter(u=>u.name&&u.adUnitId);
 
@@ -600,10 +604,10 @@ export default function MappingPage() {
               <div style={s.cH}><span style={s.cT}>Networks</span></div>
               <div style={s.cB}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {["pangle","liftoff","mintegral","meta"].map(n=>{
+                  {["pangle","liftoff","mintegral","meta","applovin"].map(n=>{
                     const on=nets.includes(n);
                     const ready = networkReady[n as keyof typeof networkReady];
-                    const ic: Record<string,string>={pangle:"🌐",liftoff:"🚀",mintegral:"📊",meta:"📘"};
+                    const ic: Record<string,string>={pangle:"🌐",liftoff:"🚀",mintegral:"📊",meta:"📘",applovin:"🎯"};
                     return (
                       <div key={n}
                         onClick={()=>ready&&setNets(p=>on?p.filter(x=>x!==n):[...p,n])}
@@ -730,7 +734,10 @@ export default function MappingPage() {
                             <td style={{fontFamily:FM,fontSize:11.5,color:C.text,fontWeight:500}}>{r.groupName}</td>
                             <td>{r.status==="ok"
                               ?<span style={{...s.chip(C.accent,C.accentDim),fontSize:9}}>✓ OK</span>
-                              :<span style={{...s.chip(C.red,C.redDim),fontSize:9}}title={r.status}>✗ Lỗi</span>}
+                              :<div style={{display:"flex",flexDirection:"column",gap:4}}>
+                                <span style={{...s.chip(C.red,C.redDim),fontSize:9}}>✗ Lỗi</span>
+                                <span style={{fontFamily:FM,fontSize:9,color:C.red,wordBreak:"break-word"}}>{r.status.replace("error: ","")}</span>
+                              </div>}
                             </td>
                             <td style={{fontFamily:FM,fontSize:10.5,color:C.text3}}>{r.id??"—"}</td>
                           </tr>

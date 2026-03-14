@@ -54,11 +54,11 @@ export const mintegral = {
     };
     // Package / bundle ID always included when provided
     if (params.packageName) fields.package = params.packageName;
+    if (params.appIdOnStore) fields.app_id = params.appIdOnStore;
     if (params.isLive) {
       if (params.storeUrl)   fields.store_url    = params.storeUrl;
       if (params.storeName)  fields.store_name   = params.storeName;
       if (params.previewLink) fields.preview_link = params.previewLink;
-      if (params.appIdOnStore) fields.app_id      = params.appIdOnStore;
     }
     return mintegralPost("/app/open_api_create", fields);
   },

@@ -73,7 +73,10 @@ const card: React.CSSProperties = {
 export default function AppsPage() {
   const router = useRouter();
   const [form, setForm] = useState({
-    displayName: "",
+    appStatus: "live" as "live" | "not_live",
+    appUrl: "",
+    appName: "",
+    detectedCategory: "",
     platform: "ANDROID" as MobilePlatform,
     targets: {
       admob: true,
@@ -81,14 +84,12 @@ export default function AppsPage() {
       minter: false,
       pangle: false,
     } as Record<TargetKey, boolean>,
-    minterPackageName: "",
-    minterIsLiveInStore: false,
-    minterStoreUrl: "",
+    mintegralAndroidStore: "google_play" as "google_play" | "amazon",
+    mintegralManualIdentifier: "",
     pangleCategoryCode: "",
-    pangleStatus: "test" as "test" | "live",
-    pangleDownloadUrl: "",
     liftoffBundleId: "",
   });
+  const [detectingStore, setDetectingStore] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CreateAppResult | null>(null);
@@ -123,18 +124,61 @@ export default function AppsPage() {
   }, [form.targets.pangle, pangleCategories.length, pangleCategoryLoading, form.pangleCategoryCode]);
 
   const selectedTargets = (Object.keys(form.targets) as TargetKey[]).filter((k) => form.targets[k]);
+  const isLiveFlow = form.appStatus === "live";
+
+  const handleDetectFromUrl = async () => {
+    if (!form.appUrl.trim()) return;
+    setDetectingStore(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/apps/store-metadata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeUrl: form.appUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Không detect được metadata từ store URL");
+
+      // Validate that we got app name
+      if (!data.appName) {
+        throw new Error("Không tìm thấy App Name từ URL này. Vui lòng kiểm tra lại URL hoặc thử URL khác.");
+      }
+
+      setForm((f) => ({
+        ...f,
+        platform: data.platform ?? f.platform,
+        appName: data.appName ?? "",
+        detectedCategory: data.category ?? "",
+      }));
+    } catch (e: any) {
+      setError(e.message ?? "Không detect được metadata từ store URL");
+      // Clear detected values on error
+      setForm((f) => ({ ...f, appName: "", detectedCategory: "" }));
+    } finally {
+      setDetectingStore(false);
+    }
+  };
 
   const validationErrors: string[] = [];
-  if (form.displayName.trim().length < 3) validationErrors.push("Tên app tối thiểu 3 ký tự");
   if (selectedTargets.length === 0) validationErrors.push("Chọn ít nhất 1 nền tảng để tạo app");
-  if (form.targets.minter && !form.minterPackageName.trim())
-    validationErrors.push("Mintegral yêu cầu Package Name");
-  if (form.targets.minter && form.minterIsLiveInStore && !form.minterStoreUrl.trim())
-    validationErrors.push("Mintegral live app yêu cầu Store URL");
-  if (form.targets.pangle && !form.pangleCategoryCode.trim())
-    validationErrors.push("Pangle yêu cầu App Category Code");
-  if (form.targets.pangle && form.pangleStatus === "live" && !form.pangleDownloadUrl.trim())
-    validationErrors.push("Pangle live app yêu cầu Download URL");
+  if (isLiveFlow && !form.appUrl.trim()) validationErrors.push("App URL bắt buộc cho luồng Live");
+  if (!isLiveFlow && form.appName.trim().length < 2) validationErrors.push("App Name tối thiểu 2 ký tự cho luồng Not Live");
+
+  // Pangle: live thì auto-detect category, not-live thì bắt buộc chọn manual category
+  if (form.targets.pangle && !isLiveFlow && !form.pangleCategoryCode.trim()) {
+    validationErrors.push("Pangle Not Live yêu cầu chọn Category thủ công");
+  }
+
+  // Mintegral: not-live cần manual identifier theo platform
+  if (form.targets.minter && !isLiveFlow && !form.mintegralManualIdentifier.trim()) {
+    validationErrors.push(
+      form.platform === "ANDROID"
+        ? "Mintegral Not Live (Android) yêu cầu Package Name"
+        : "Mintegral Not Live (iOS) yêu cầu App ID on Store hoặc Bundle ID"
+    );
+  }
+
+  // Liftoff not-live: bundleId chỉ là optional nên không bắt buộc
 
   const canSubmit = validationErrors.length === 0 && confirmed && !loading;
 
@@ -146,24 +190,20 @@ export default function AppsPage() {
         method: "POST",
         headers: { "Content-Type":"application/json" },
         body: JSON.stringify({
-          displayName: form.displayName.trim(),
+          appStatus: form.appStatus,
+          appUrl: form.appUrl.trim() || undefined,
+          appName: form.appName.trim() || undefined,
           platform: form.platform,
           targets: {
-            admob: { enabled: form.targets.admob },
-            liftoff: { enabled: form.targets.liftoff, bundleId: form.liftoffBundleId.trim() || undefined },
-            minter: {
-              enabled: form.targets.minter,
-              packageName: form.minterPackageName.trim(),
-              isLiveInStore: form.minterIsLiveInStore,
-              storeUrl: form.minterStoreUrl.trim() || undefined,
-            },
-            pangle: {
-              enabled: form.targets.pangle,
-              categoryCode: form.pangleCategoryCode ? Number(form.pangleCategoryCode) : undefined,
-              status: form.pangleStatus,
-              downloadUrl: form.pangleDownloadUrl.trim() || undefined,
-            },
+            admob: form.targets.admob,
+            liftoff: form.targets.liftoff,
+            minter: form.targets.minter,
+            pangle: form.targets.pangle,
           },
+          liftoffBundleId: form.liftoffBundleId.trim() || undefined,
+          mintegralAndroidStore: form.mintegralAndroidStore,
+          mintegralManualIdentifier: form.mintegralManualIdentifier.trim() || undefined,
+          pangleCategoryCode: form.pangleCategoryCode ? Number(form.pangleCategoryCode) : undefined,
         }),
       });
       const data = await res.json();
@@ -179,15 +219,15 @@ export default function AppsPage() {
 
   const reset = () => {
     setForm({
-      displayName: "",
+      appStatus: "live",
+      appUrl: "",
+      appName: "",
+      detectedCategory: "",
       platform: "ANDROID",
       targets: { admob: true, liftoff: false, minter: false, pangle: false },
-      minterPackageName: "",
-      minterIsLiveInStore: false,
-      minterStoreUrl: "",
+      mintegralAndroidStore: "google_play",
+      mintegralManualIdentifier: "",
       pangleCategoryCode: "",
-      pangleStatus: "test",
-      pangleDownloadUrl: "",
       liftoffBundleId: "",
     });
     setConfirmed(false);
@@ -455,15 +495,58 @@ export default function AppsPage() {
               </div>
               <div style={{ padding:"22px" }}>
 
-                {/* Display Name */}
+                {/* App status */}
                 <div style={{ marginBottom:20 }}>
-                  <label style={lbl}>Tên hiển thị <span style={{color:C.red}}>*</span></label>
-                  <input style={inp} placeholder="VD: My Casual Game, Hyper Runner..."
-                    value={form.displayName}
-                    onChange={e=>setForm(f=>({...f,displayName:e.target.value}))}/>
-                  <div style={{ fontSize:11, color:C.text3, marginTop:5 }}>
-                    Tên này chỉ hiển thị trong AdMob Console, không phải tên store.
+                  <label style={lbl}>App Status <span style={{color:C.red}}>*</span></label>
+                  <div style={{ display:"flex", gap:10 }}>
+                    {([
+                      ["live", "Live (đã có trên store)"],
+                      ["not_live", "Not Live (chưa lên store)"],
+                    ] as const).map(([key, title]) => {
+                      const sel = form.appStatus === key;
+                      return (
+                        <div key={key}
+                          onClick={() => setForm((f) => ({ ...f, appStatus: key }))}
+                          style={{ flex:1, display:"flex", alignItems:"center", gap:10,
+                            padding:"12px 16px", borderRadius:8, cursor:"pointer", userSelect:"none",
+                            border:`1px solid ${sel ? C.accent : C.border2}`,
+                            background: sel ? C.accentDim : C.ink2,
+                            color: sel ? C.accent : C.text2 }}>
+                          <div style={{ width:15, height:15, borderRadius:"50%",
+                            border:`1.5px solid ${sel ? C.accent : C.border2}`,
+                            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                            {sel && <div style={{ width:7, height:7, borderRadius:"50%", background:C.accent }}/>}
+                          </div>
+                          <span style={{ fontWeight:600, fontSize:12.5 }}>{title}</span>
+                        </div>
+                      );
+                    })}
                   </div>
+                </div>
+
+                {/* App name */}
+                <div style={{ marginBottom:20 }}>
+                  <label style={lbl}>
+                    App Name <span style={{color:C.red}}>*</span>
+                    {isLiveFlow && form.appName && (
+                      <span style={{ fontSize:10, marginLeft:8, padding:"2px 7px", borderRadius:4,
+                        background:C.accentDim, color:C.accent, fontWeight:700, textTransform:"none" }}>
+                        ✓ Auto-detected
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    style={{...inp, background: isLiveFlow ? C.ink : C.ink2, cursor: isLiveFlow ? "not-allowed" : "text"}}
+                    placeholder={isLiveFlow ? "Ấn Search để detect từ App URL" : "Nhập thủ công App Name"}
+                    value={form.appName}
+                    onChange={(e)=>setForm(f=>({ ...f, appName: e.target.value }))}
+                    readOnly={isLiveFlow}
+                  />
+                  {isLiveFlow && (
+                    <div style={{ fontSize:11, color: form.detectedCategory ? C.accent : C.text3, marginTop:6 }}>
+                      {form.detectedCategory ? `✓ Category: ${form.detectedCategory}` : "⚠ Chưa detect từ App URL"}
+                    </div>
+                  )}
                 </div>
 
                 {/* Platform */}
@@ -491,6 +574,43 @@ export default function AppsPage() {
                     })}
                   </div>
                 </div>
+
+                {/* Store URL + detect */}
+                {isLiveFlow && (
+                  <div style={{ marginBottom:20, padding:"12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.ink2 }}>
+                    <div style={{ fontSize:12, color:C.text2, fontWeight:700, marginBottom:10 }}>Live app metadata</div>
+                    <label style={lbl}>App URL <span style={{color:C.red}}>*</span></label>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <input
+                        style={inp}
+                        placeholder="https://play.google.com/... hoặc https://apps.apple.com/..."
+                        value={form.appUrl}
+                        onChange={(e)=>{
+                          const newUrl = e.target.value;
+                          // Clear previous detection results when URL changes
+                          setForm(f=>({ ...f, appUrl: newUrl, appName: "", detectedCategory: "" }));
+                          setError(null);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleDetectFromUrl}
+                        disabled={detectingStore || !form.appUrl.trim()}
+                        style={{ ...btnG, whiteSpace:"nowrap", opacity: detectingStore || !form.appUrl.trim() ? 0.6 : 1 }}>
+                        {detectingStore ? "↻ Đang detect" : "Search"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize:11, color:C.text3, marginTop:8, lineHeight:1.5 }}>
+                      URL dùng để auto-detect App Name và Category.
+                    </div>
+                    {error && (
+                      <div style={{ padding:"8px 10px", background:"rgba(220,38,38,0.1)", border:`1px solid rgba(220,38,38,0.3)`,
+                        borderRadius:6, fontSize:11.5, color:C.red, marginTop:10 }}>
+                        ⚠ {error}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Targets */}
                 <div style={{ marginBottom:20 }}>
@@ -539,10 +659,10 @@ export default function AppsPage() {
                 {form.targets.liftoff && (
                   <div style={{ marginBottom:20, padding:"12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.ink2 }}>
                     <div style={{ fontSize:12, color:C.text2, fontWeight:700, marginBottom:10 }}>Liftoff fields</div>
-                    <label style={lbl}>Bundle ID (tuỳ chọn)</label>
+                    <label style={lbl}>Bundle ID (tuỳ chọn cho Not Live)</label>
                     <input
                       style={inp}
-                      placeholder="com.company.game"
+                      placeholder={form.platform === "ANDROID" ? "com.company.game" : "id123456789 hoặc com.company.ios"}
                       value={form.liftoffBundleId}
                       onChange={(e)=>setForm(f=>({ ...f, liftoffBundleId: e.target.value }))}
                     />
@@ -551,46 +671,51 @@ export default function AppsPage() {
 
                 {form.targets.minter && (
                   <div style={{ marginBottom:20, padding:"12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.ink2 }}>
-                    <div style={{ fontSize:12, color:C.text2, fontWeight:700, marginBottom:10 }}>Minter fields bắt buộc</div>
-                    <div style={{ marginBottom:12 }}>
-                      <label style={lbl}>Package Name <span style={{color:C.red}}>*</span></label>
-                      <input
-                        style={inp}
-                        placeholder="com.company.game"
-                        value={form.minterPackageName}
-                        onChange={(e)=>setForm(f=>({ ...f, minterPackageName: e.target.value }))}
-                      />
-                    </div>
-                    <div style={{ marginBottom:10 }}>
-                      <label style={{ ...lbl, marginBottom:8 }}>Live in store?</label>
-                      <div style={{ display:"flex", gap:10 }}>
-                        {["No", "Yes"].map((v) => {
-                          const yes = v === "Yes";
-                          const selected = form.minterIsLiveInStore === yes;
-                          return (
-                            <div key={v} onClick={()=>setForm(f=>({ ...f, minterIsLiveInStore: yes }))}
-                              style={{
-                                padding:"8px 12px",
-                                borderRadius:8,
-                                border:`1px solid ${selected ? C.accent : C.border2}`,
-                                background:selected ? C.accentDim : C.ink,
-                                color:selected ? C.accent : C.text2,
-                                cursor:"pointer",
-                                fontSize:12,
-                                fontWeight:600,
-                              }}>{v}</div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {form.minterIsLiveInStore && (
+                    <div style={{ fontSize:12, color:C.text2, fontWeight:700, marginBottom:10 }}>Mintegral fields</div>
+                    {isLiveFlow ? (
+                      <>
+                        {form.platform === "ANDROID" && (
+                          <div style={{ marginBottom:10 }}>
+                            <label style={{ ...lbl, marginBottom:8 }}>Live in Store</label>
+                            <div style={{ display:"flex", gap:10 }}>
+                              {([
+                                ["google_play", "Google Play"],
+                                ["amazon", "Amazon Store"],
+                              ] as const).map(([k, title]) => {
+                                const selected = form.mintegralAndroidStore === k;
+                                return (
+                                  <div key={k}
+                                    onClick={() => setForm((f) => ({ ...f, mintegralAndroidStore: k }))}
+                                    style={{
+                                      padding:"8px 12px",
+                                      borderRadius:8,
+                                      border:`1px solid ${selected ? C.accent : C.border2}`,
+                                      background:selected ? C.accentDim : C.ink,
+                                      color:selected ? C.accent : C.text2,
+                                      cursor:"pointer",
+                                      fontSize:12,
+                                      fontWeight:600,
+                                    }}>{title}</div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <div style={{ fontSize:11, color:C.text3, lineHeight:1.6 }}>
+                          Live flow: Mintegral sẽ dùng App URL để xử lý dữ liệu app.
+                        </div>
+                      </>
+                    ) : (
                       <div>
-                        <label style={lbl}>Store URL <span style={{color:C.red}}>*</span></label>
+                        <label style={lbl}>
+                          {form.platform === "ANDROID" ? "Package Name" : "App ID on App Store / Bundle ID"}
+                          <span style={{color:C.red}}> *</span>
+                        </label>
                         <input
                           style={inp}
-                          placeholder="https://play.google.com/store/apps/details?id=..."
-                          value={form.minterStoreUrl}
-                          onChange={(e)=>setForm(f=>({ ...f, minterStoreUrl: e.target.value }))}
+                          placeholder={form.platform === "ANDROID" ? "com.company.game" : "id123456789 hoặc com.company.ios"}
+                          value={form.mintegralManualIdentifier}
+                          onChange={(e)=>setForm(f=>({ ...f, mintegralManualIdentifier: e.target.value }))}
                         />
                       </div>
                     )}
@@ -599,58 +724,33 @@ export default function AppsPage() {
 
                 {form.targets.pangle && (
                   <div style={{ marginBottom:20, padding:"12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.ink2 }}>
-                    <div style={{ fontSize:12, color:C.text2, fontWeight:700, marginBottom:10 }}>Pangle fields bắt buộc</div>
-                    <div style={{ marginBottom:12 }}>
-                      <label style={lbl}>Category <span style={{color:C.red}}>*</span></label>
-                      <select
-                        style={inp}
-                        value={form.pangleCategoryCode}
-                        onChange={(e)=>setForm(f=>({ ...f, pangleCategoryCode: e.target.value }))}
-                      >
-                        <option value="" disabled>
-                          {pangleCategoryLoading ? "Đang tải category..." : "Chọn category"}
-                        </option>
-                        {pangleCategories.map((cat) => (
-                          <option key={cat.code} value={String(cat.code)}>
-                            {cat.label} ({cat.code})
-                          </option>
-                        ))}
-                      </select>
-                      <div style={{ fontSize:11, color:C.text3, marginTop:6 }}>
-                        Nguồn category: {pangleCategorySource === "crawl" ? "crawl từ Pangle website" : "fallback nội bộ"}
+                    <div style={{ fontSize:12, color:C.text2, fontWeight:700, marginBottom:10 }}>Pangle fields</div>
+                    {isLiveFlow ? (
+                      <div style={{ fontSize:11.5, color:C.text3, lineHeight:1.6 }}>
+                        Live flow: category sẽ tự detect theo App URL.
+                        <br />
+                        Category detect hiện tại: <strong style={{ color:C.text2 }}>{form.detectedCategory || "(chưa detect)"}</strong>
                       </div>
-                    </div>
-                    <div style={{ marginBottom:10 }}>
-                      <label style={{ ...lbl, marginBottom:8 }}>Status</label>
-                      <div style={{ display:"flex", gap:10 }}>
-                        {(["test", "live"] as const).map((s) => {
-                          const selected = form.pangleStatus === s;
-                          return (
-                            <div key={s} onClick={()=>setForm(f=>({ ...f, pangleStatus: s }))}
-                              style={{
-                                padding:"8px 12px",
-                                borderRadius:8,
-                                border:`1px solid ${selected ? C.accent : C.border2}`,
-                                background:selected ? C.accentDim : C.ink,
-                                color:selected ? C.accent : C.text2,
-                                cursor:"pointer",
-                                fontSize:12,
-                                fontWeight:600,
-                                textTransform:"uppercase",
-                              }}>{s}</div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {form.pangleStatus === "live" && (
-                      <div>
-                        <label style={lbl}>Download URL <span style={{color:C.red}}>*</span></label>
-                        <input
+                    ) : (
+                      <div style={{ marginBottom:12 }}>
+                        <label style={lbl}>Category <span style={{color:C.red}}>*</span></label>
+                        <select
                           style={inp}
-                          placeholder="https://apps.apple.com/... hoặc https://play.google.com/..."
-                          value={form.pangleDownloadUrl}
-                          onChange={(e)=>setForm(f=>({ ...f, pangleDownloadUrl: e.target.value }))}
-                        />
+                          value={form.pangleCategoryCode}
+                          onChange={(e)=>setForm(f=>({ ...f, pangleCategoryCode: e.target.value }))}
+                        >
+                          <option value="" disabled>
+                            {pangleCategoryLoading ? "Đang tải category..." : "Chọn category"}
+                          </option>
+                          {pangleCategories.map((cat) => (
+                            <option key={cat.code} value={String(cat.code)}>
+                              {cat.label} ({cat.code})
+                            </option>
+                          ))}
+                        </select>
+                        <div style={{ fontSize:11, color:C.text3, marginTop:6 }}>
+                          Nguồn category: {pangleCategorySource === "crawl" ? "crawl từ Pangle website" : "fallback nội bộ"}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -673,7 +773,7 @@ export default function AppsPage() {
                     {confirmed && <svg width={10} height={10} fill="none" stroke={C.ink} strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>}
                   </div>
                   <span style={{ fontSize:13, color:C.text2 }}>
-                    Tôi xác nhận muốn tạo app <strong style={{color:C.text}}>"{form.displayName || "..."}"</strong> trên: {selectedTargets.join(", ") || "..."}.
+                    Tôi xác nhận muốn tạo app <strong style={{color:C.text}}>"{form.appName || "..."}"</strong> ({isLiveFlow ? "Live" : "Not Live"}) trên: {selectedTargets.join(", ") || "..."}.
                   </span>
                 </div>
 

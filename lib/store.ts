@@ -45,29 +45,45 @@ export function parseStoreUrl(rawUrl: string): StoreParseResult {
 export async function fetchAppName(parsed: StoreParseResult): Promise<string | null> {
   try {
     if (parsed.platform === "IOS") {
-      return await fetchIosAppName(parsed.bundleId);
+      return await fetchIosLookup(parsed.bundleId).then((d) => d.appName);
     }
-    return await fetchAndroidAppName(parsed.bundleId);
+    return await fetchAndroidLookup(parsed.bundleId).then((d) => d.appName);
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch app category from store. Returns null on failure — never throws. */
+export async function fetchAppCategory(parsed: StoreParseResult): Promise<string | null> {
+  try {
+    if (parsed.platform === "IOS") {
+      return await fetchIosLookup(parsed.bundleId).then((d) => d.category);
+    }
+    return await fetchAndroidLookup(parsed.bundleId).then((d) => d.category);
   } catch {
     return null;
   }
 }
 
 /** iOS: iTunes Lookup API (public, no auth) */
-async function fetchIosAppName(bundleId: string): Promise<string | null> {
+async function fetchIosLookup(bundleId: string): Promise<{ appName: string | null; category: string | null }> {
   // bundleId = "id987654321" → numericId = "987654321"
   const numericId = bundleId.replace(/^id/, "");
   const res = await fetch(
     `https://itunes.apple.com/lookup?id=${encodeURIComponent(numericId)}&country=us`,
     { cache: "no-store" }
   );
-  if (!res.ok) return null;
+  if (!res.ok) return { appName: null, category: null };
   const data = await res.json();
-  return data?.results?.[0]?.trackName ?? null;
+  const row = data?.results?.[0];
+  return {
+    appName: row?.trackName ?? null,
+    category: row?.primaryGenreName ?? row?.genres?.[0] ?? null,
+  };
 }
 
 /** Android: Scrape Play Store HTML <title> tag (server-side to bypass CORS) */
-async function fetchAndroidAppName(packageName: string): Promise<string | null> {
+async function fetchAndroidLookup(packageName: string): Promise<{ appName: string | null; category: string | null }> {
   const res = await fetch(
     `https://play.google.com/store/apps/details?id=${encodeURIComponent(packageName)}&hl=en`,
     {
@@ -75,15 +91,45 @@ async function fetchAndroidAppName(packageName: string): Promise<string | null> 
       cache: "no-store",
     }
   );
-  if (!res.ok) return null;
+  if (!res.ok) return { appName: null, category: null };
   const html = await res.text();
-  // <title>App Name - Apps on Google Play</title>
-  const match = html.match(/<title>([^<]+)<\/title>/);
-  if (!match) return null;
-  const raw = match[1];
-  // Strip " - Apps on Google Play" suffix
-  const idx = raw.lastIndexOf(" - Apps on Google Play");
-  return idx > 0 ? raw.substring(0, idx).trim() : raw.trim();
+
+  let appName: string | null = null;
+  let category: string | null = null;
+
+  // 1) Try JSON-LD — most reliable source for both name and category
+  const jsonLdMatch = html.match(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonLdMatch?.[1]) {
+    try {
+      const json = JSON.parse(jsonLdMatch[1]);
+      if (typeof json?.name === "string") {
+        appName = json.name.trim();
+      }
+      if (typeof json?.applicationCategory === "string") {
+        category = json.applicationCategory.trim();
+      }
+    } catch {
+      // Ignore parse issues and continue fallback extraction.
+    }
+  }
+
+  // 2) Fallback: itemprop="genre" for category
+  if (!category) {
+    const genreMatch = html.match(/itemprop="genre"[^>]*>([^<]+)</i);
+    if (genreMatch?.[1]) category = genreMatch[1].trim();
+  }
+
+  // 3) Fallback: <title> tag for app name
+  if (!appName) {
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+    if (titleMatch?.[1]) {
+      const raw = titleMatch[1];
+      const idx = raw.lastIndexOf(" - Apps on Google Play");
+      appName = idx > 0 ? raw.substring(0, idx).trim() : raw.trim();
+    }
+  }
+
+  return { appName, category };
 }
 
 /**
@@ -91,6 +137,9 @@ async function fetchAndroidAppName(packageName: string): Promise<string | null> 
  */
 export async function getStoreMetadata(rawUrl: string): Promise<StoreMetadata> {
   const parsed = parseStoreUrl(rawUrl);
-  const appName = await fetchAppName(parsed);
-  return { ...parsed, appName };
+  const [appName, category] = await Promise.all([
+    fetchAppName(parsed),
+    fetchAppCategory(parsed),
+  ]);
+  return { ...parsed, appName, category };
 }

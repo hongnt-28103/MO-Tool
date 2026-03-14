@@ -20,9 +20,20 @@ const FM = "'IBM Plex Mono','Courier New',monospace";
 /* ─── Types ─── */
 type AppRecord = {
   id:string; name:string; platform:string; isLive:boolean;
+  dbId?:string|null;
   admobAppId:string|null; pangleAppId:string|null; liftoffAppId:string|null;
   mintegralAppId:string|null; mintegralAppKey:string|null;
   admobStatus:string; pangleStatus:string; liftoffStatus:string; mintegralStatus:string;
+};
+type AdmobSyncApp = {
+  admobAppId: string;
+  displayName: string;
+  platform: string;
+  bundleId?: string;
+  dbId?: string | null;
+  liftoff?: { status?: string; appId?: string | null };
+  pangle?: { status?: string; appId?: string | null };
+  mintegral?: { status?: string; appId?: string | null };
 };
 type ParsedUnit = { name:string; format:string; tier:string; valid:boolean; error?:string };
 type PlatformRule = "per_unit" | "per_format";
@@ -101,16 +112,61 @@ function AdUnitsContent() {
 
   // Fetch apps
   useEffect(()=>{
-    fetch("/api/apps").then(r=>r.json()).then(d=>{
-      if(d.apps) setApps(d.apps);
-    }).catch(()=>{}).finally(()=>setAppsLoading(false));
+    const mapDbApps = (rawApps: any[]): AppRecord[] =>
+      rawApps.map((a: any) => ({
+        ...a,
+        dbId: a.id,
+      }));
+
+    const mapAdmobApps = (rawApps: AdmobSyncApp[]): AppRecord[] =>
+      rawApps
+        .filter((a) => !!a.admobAppId)
+        .map((a) => ({
+          id: a.dbId ?? `admob:${a.admobAppId}`,
+          dbId: a.dbId ?? null,
+          name: a.displayName || a.admobAppId,
+          platform: (a.platform ?? "ANDROID").toUpperCase(),
+          isLive: true,
+          admobAppId: a.admobAppId,
+          pangleAppId: a.pangle?.appId ?? null,
+          liftoffAppId: a.liftoff?.appId ?? null,
+          mintegralAppId: a.mintegral?.appId ?? null,
+          mintegralAppKey: null,
+          admobStatus: "ok",
+          pangleStatus: a.pangle?.status ?? "none",
+          liftoffStatus: a.liftoff?.status ?? "none",
+          mintegralStatus: a.mintegral?.status ?? "none",
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    (async () => {
+      try {
+        const syncRes = await fetch("/api/apps/admob-sync");
+        const syncData = await syncRes.json();
+        if (syncRes.ok && Array.isArray(syncData.apps)) {
+          setApps(mapAdmobApps(syncData.apps));
+          return;
+        }
+
+        const dbRes = await fetch("/api/apps");
+        const dbData = await dbRes.json();
+        if (dbRes.ok && Array.isArray(dbData.apps)) {
+          setApps(mapDbApps(dbData.apps));
+          setError("Không tải được full app list từ AdMob, đang hiển thị app đã sync trong hệ thống.");
+        }
+      } catch {
+        setError("Không tải được danh sách app. Vui lòng thử lại.");
+      } finally {
+        setAppsLoading(false);
+      }
+    })();
   },[]);
 
   const selectedApp = apps.find(a=>a.id===selectedAppId);
 
   // Available platforms based on selected app
   const available = {
-    admob: !!selectedApp?.admobAppId && selectedApp.admobStatus==="ok",
+    admob: !!selectedApp?.admobAppId && (selectedApp.admobStatus === "ok" || selectedApp.admobStatus === "verifying"),
     pangle: !!selectedApp?.pangleAppId && selectedApp.pangleStatus==="ok",
     liftoff: !!selectedApp?.liftoffAppId && selectedApp.liftoffStatus==="ok",
     mintegral: !!selectedApp?.mintegralAppId && selectedApp.mintegralStatus==="ok",
@@ -167,13 +223,43 @@ function AdUnitsContent() {
   const handleCreate = async () => {
     const validUnits = parsed.filter(u=>u.valid);
     if(!validUnits.length) { setError("Không có ad unit hợp lệ"); return; }
+    if(!selectedApp) { setError("Vui lòng chọn app"); return; }
+
     setLoading(true); setError(null); setStep(3);
     try {
+      let targetAppId = selectedApp.dbId ?? selectedApp.id;
+
+      // If app is only from AdMob list (not yet in local DB), import it first.
+      if (!selectedApp.dbId && selectedApp.admobAppId) {
+        const importRes = await fetch("/api/apps/admob-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            admobAppId: selectedApp.admobAppId,
+            displayName: selectedApp.name,
+            platform: selectedApp.platform,
+          }),
+        });
+        const importData = await importRes.json();
+        if (!importRes.ok || !importData?.app?.id) {
+          throw new Error(importData?.error ?? "Không thể import app từ AdMob vào hệ thống");
+        }
+        targetAppId = importData.app.id;
+        setApps((prev) =>
+          prev.map((a) =>
+            a.admobAppId === selectedApp.admobAppId
+              ? { ...a, id: targetAppId, dbId: targetAppId }
+              : a
+          )
+        );
+        setSelectedAppId(targetAppId);
+      }
+
       const res = await fetch("/api/adunits",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          appId: selectedAppId,
+          appId: targetAppId,
           units: validUnits.map(u=>({ name:u.name, format:u.format })),
           platforms,
           rules,
@@ -291,11 +377,21 @@ function AdUnitsContent() {
                         onChange={e=>setSelectedAppId(e.target.value)}>
                         <option value="">— Chọn app —</option>
                         {apps.map(a=>(
-                          <option key={a.id} value={a.id}>{a.name} ({a.platform})</option>
+                          <option key={a.id} value={a.id}>
+                            {a.name} ({a.platform}){a.dbId ? "" : " • AdMob only"}
+                          </option>
                         ))}
                       </select>
+                      <div style={{fontSize:11,color:C.text3,marginTop:7}}>
+                        Đang hiển thị {apps.length} app từ tài khoản AdMob hiện tại.
+                      </div>
                       {selectedApp&&(
                         <div style={{marginTop:12,padding:"10px 12px",background:C.ink3,borderRadius:8,fontSize:12}}>
+                          {!selectedApp.dbId && (
+                            <div style={{marginBottom:8,color:C.blue}}>
+                              App này chưa sync trong hệ thống. Khi tạo ad unit, hệ thống sẽ tự import app trước.
+                            </div>
+                          )}
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                             {(["admob","pangle","liftoff","mintegral"] as const).map(p=>{
                               const ok = available[p];

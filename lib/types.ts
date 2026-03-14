@@ -60,6 +60,7 @@ export type StoreParseResult = {
 /** Store metadata (name fetched from store) */
 export type StoreMetadata = StoreParseResult & {
   appName: string | null;
+  category: string | null;
 };
 
 /** A row from the App table for display */
