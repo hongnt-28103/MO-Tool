@@ -176,7 +176,9 @@ function pickPangleCategoryCode(params: {
 async function createPangle(params: {
   appName: string;
   isLive: boolean;
+  platform: MobilePlatform;
   storeUrl?: string;
+  bundleId?: string;
   requestedCategoryCode?: number;
   detectedCategory?: string | null;
 }): Promise<PlatformResult> {
@@ -192,20 +194,31 @@ async function createPangle(params: {
     params.appName,
     categoryCode,
     params.isLive ? "live" : "test",
-    params.isLive ? params.storeUrl : undefined
+    params.platform,
+    params.isLive ? params.storeUrl : undefined,
+    params.bundleId
   );
 
   const appId = result?.data?.app_id != null ? String(result.data.app_id) : undefined;
   const pangleStatus = result?.data?.status;
+  const existingLinked = Boolean(result?.data?.existing);
+  const authOk = result?.data?.auth_ok !== false;
+
+  let warning: string | undefined;
+  if (existingLinked) {
+    warning = "App đã tồn tại trên Pangle, hệ thống đã auto-link theo app_id hiện có.";
+  } else if (!authOk) {
+    warning = "⚠ Account Pangle chưa được phê duyệt đầy đủ quyền (third level auth). App đã tạo qua API nhưng có thể không hiển thị trên portal. Vui lòng liên hệ Pangle support để kích hoạt account.";
+  } else if (pangleStatus === 6) {
+    warning = "App ở trạng thái TEST (status=6). Trên Pangle portal cần lọc theo Test Apps.";
+  } else if (pangleStatus === 1) {
+    warning = "App đang chờ duyệt (status=1 verifying).";
+  }
+
   return {
-    status: pangleStatus === 1 ? "verifying" : "ok",
+    status: !authOk ? "warning" : pangleStatus === 1 ? "verifying" : "ok",
     appId,
-    warning:
-      pangleStatus === 6
-        ? "App ở trạng thái TEST (status=6). Portal có thể hiển thị trễ vài phút."
-        : pangleStatus === 1
-          ? "App đang chờ duyệt (status=1 verifying)."
-          : undefined,
+    warning,
     raw: result,
   };
 }
@@ -359,7 +372,9 @@ export async function POST(req: NextRequest) {
       ? createPangle({
           appName: resolvedName,
           isLive,
+          platform: input.platform,
           storeUrl: input.appUrl,
+          bundleId: resolvedBundleId,
           requestedCategoryCode: input.pangleCategoryCode,
           detectedCategory,
         })
@@ -466,7 +481,7 @@ export async function POST(req: NextRequest) {
       warning: results.mintegral.warning,
     },
     pangle: {
-      ok: results.pangle.status === "ok" || results.pangle.status === "verifying",
+      ok: results.pangle.status === "ok" || results.pangle.status === "verifying" || results.pangle.status === "warning",
       data: results.pangle.raw ?? { appId: results.pangle.appId, status: results.pangle.status },
       error: results.pangle.error,
       warning: results.pangle.warning,

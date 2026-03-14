@@ -72,6 +72,8 @@ export default function AppDetailPage() {
 
   // Add-platform state
   const [expandedAdd, setExpandedAdd] = useState<PlatformKey | null>(null);
+  const [addMode, setAddMode] = useState<"choose" | "link" | "create">("choose");
+  const [linkAppId, setLinkAppId] = useState("");
   const [addForm, setAddForm] = useState<AddFormState>({
     pangleCategoryCode: "",
     liftoffCategory: "",
@@ -161,6 +163,44 @@ export default function AppDetailPage() {
     }
   };
 
+  const openAddPanel = (key: PlatformKey) => {
+    setExpandedAdd(key);
+    setAddMode("choose");
+    setLinkAppId("");
+    setAddMsg(null);
+    if (key === "pangle") loadPangleCategories();
+  };
+
+  const closeAddPanel = () => {
+    setExpandedAdd(null);
+    setAddMode("choose");
+    setLinkAppId("");
+    setAddMsg(null);
+  };
+
+  const handleLinkPlatform = async (platform: PlatformKey) => {
+    if (!linkAppId.trim()) return;
+    setAdding(true);
+    setAddMsg(null);
+    try {
+      const res = await fetch(`/api/apps/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkPlatform: platform, existingAppId: linkAppId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setApp(data.app);
+      closeAddPanel();
+      setAddMsg({ ok: true, text: `Đã liên kết ${platform} thành công! App ID: ${linkAppId.trim()}` });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error";
+      setAddMsg({ ok: false, text: `Lỗi liên kết: ${msg}` });
+    } finally {
+      setAdding(false);
+    }
+  };
+
   const handleAddPlatform = async (platform: PlatformKey) => {
     setAdding(true);
     setAddMsg(null);
@@ -186,8 +226,8 @@ export default function AppDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setApp(data.app);
-      setExpandedAdd(null);
-      setAddMsg({ ok: true, text: `Da tao app tren ${platform} thanh cong!` });
+      closeAddPanel();
+      setAddMsg({ ok: true, text: `Đã tạo app trên ${platform} thành công!` });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error";
       setAddMsg({ ok: false, text: `Error: ${msg}` });
@@ -260,30 +300,127 @@ export default function AppDetailPage() {
 
   const renderAddForm = (key: PlatformKey) => {
     const isAndroid = app.platform === "ANDROID";
-    return (
-      <div style={{ marginTop:10, padding:14, borderRadius:8, border:`1px solid ${C.blue}`,
-        background:"rgba(77,158,255,0.04)" }}>
+    const isLive = app.isLive;
+    const platformName = { admob: "AdMob", pangle: "Pangle", liftoff: "Liftoff", mintegral: "Mintegral" }[key];
 
-        {/* Already-have info */}
-        <div style={{ marginBottom:12, padding:"10px 12px", borderRadius:6,
-          background:C.ink, border:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:10, fontWeight:700, color:C.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:8 }}>Thong tin da co</div>
-          {infoRow("Ten app", app.name, true)}
-          {infoRow("Platform", app.platform, true)}
-          {infoRow("Che do", app.isLive ? "Live" : "Test", true)}
-          {app.isLive && infoRow("Store URL", app.storeUrl, !!app.storeUrl)}
-          {infoRow("Bundle ID", app.bundleId, !!app.bundleId)}
+    const btnBack: React.CSSProperties = {
+      padding:"7px 14px", borderRadius:7, border:`1px solid ${C.border2}`,
+      background:"transparent", color:C.text2, fontSize:11, fontWeight:600,
+      cursor:"pointer", fontFamily:FS,
+    };
+    const btnPrimary = (disabled = false): React.CSSProperties => ({
+      padding:"8px 18px", borderRadius:7, border:"none",
+      background: disabled ? "#1a2030" : C.blue,
+      color: disabled ? C.text3 : C.ink,
+      fontSize:12, fontWeight:700,
+      cursor: disabled ? "not-allowed" : "pointer",
+      fontFamily:FS, opacity: adding ? 0.6 : 1,
+    });
+
+    // ── App info summary ──────────────────────────────────────
+    const infoSummary = (
+      <div style={{ marginBottom:12, padding:"10px 12px", borderRadius:6,
+        background:C.ink, border:`1px solid ${C.border}` }}>
+        <div style={{ fontSize:10, fontWeight:700, color:C.text3, textTransform:"uppercase",
+          letterSpacing:"0.08em", marginBottom:8 }}>Thông tin hiện tại</div>
+        {infoRow("Tên app", app.name, true)}
+        {infoRow("Platform", app.platform, true)}
+        {infoRow("Trạng thái", isLive ? "Live (đã lên store)" : "Chưa live", true)}
+        {infoRow("Bundle ID / Package", app.bundleId, !!app.bundleId)}
+        {isLive && infoRow("Store URL", app.storeUrl, !!app.storeUrl)}
+      </div>
+    );
+
+    // ── STEP: CHOOSE ─────────────────────────────────────────
+    if (addMode === "choose") {
+      return (
+        <div style={{ marginTop:10, padding:14, borderRadius:8, border:`1px solid ${C.blue}`,
+          background:"rgba(77,158,255,0.04)" }}>
+          {infoSummary}
+
+          <div style={{ fontSize:12.5, color:C.text, marginBottom:14, lineHeight:1.7 }}>
+            {isLive
+              ? <>App đã live trên store{app.bundleId ? <> — sử dụng <strong style={{color:C.accent}}>{app.bundleId}</strong> để liên kết.</> : <>.</>}
+                  <br/>Bạn đã có app này trên <strong>{platformName}</strong> chưa?</>
+              : <>App <strong>chưa live</strong>. Bạn đã tạo app này trên <strong>{platformName}</strong> trước đây chưa?</>
+            }
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:10 }}>
+            <button
+              onClick={() => setAddMode("link")}
+              style={{
+                padding:"10px 14px", borderRadius:8, border:`1px solid ${C.yellow}`,
+                background:"rgba(255,216,77,0.06)", color:C.yellow,
+                fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:FS, textAlign:"left",
+              }}>
+              ✅ Đã có — Nhập App ID để liên kết
+            </button>
+            <button
+              onClick={() => setAddMode("create")}
+              style={{
+                padding:"10px 14px", borderRadius:8, border:`1px solid ${C.blue}`,
+                background:"rgba(77,158,255,0.06)", color:C.blue,
+                fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:FS, textAlign:"left",
+              }}>
+              ➕ {isLive ? `Tạo mới trên ${platformName} (dùng Bundle ID)` : `Chưa có — Tạo app mới trên ${platformName}`}
+            </button>
+          </div>
+
+          <button onClick={closeAddPanel} style={btnBack}>✕ Hủy</button>
         </div>
+      );
+    }
 
-        {/* Platform-specific missing fields */}
+    // ── STEP: LINK ────────────────────────────────────────────
+    if (addMode === "link") {
+      const placeholder = key === "pangle" ? "Pangle App ID (số nguyên)"
+        : key === "liftoff" ? "Vungle / Liftoff App ID"
+        : key === "mintegral" ? "Mintegral App ID (số nguyên)"
+        : "AdMob App ID";
+      return (
+        <div style={{ marginTop:10, padding:14, borderRadius:8, border:`1px solid ${C.yellow}`,
+          background:"rgba(255,216,77,0.04)" }}>
+          {infoSummary}
+
+          <div style={{ fontSize:11, fontWeight:700, color:C.yellow, textTransform:"uppercase",
+            letterSpacing:"0.07em", marginBottom:10 }}>Nhập App ID đã có trên {platformName}</div>
+
+          <div style={{ marginBottom:12 }}>
+            <label style={lbl}>{platformName} App ID <span style={{ color:C.red }}>*</span></label>
+            <input style={inp} placeholder={placeholder}
+              value={linkAppId}
+              onChange={e => setLinkAppId(e.target.value)}
+              autoFocus
+            />
+            <div style={{ fontSize:11, color:C.text3, marginTop:4 }}>
+              App ID sẽ được lưu vào DB và platform được đánh dấu OK.
+            </div>
+          </div>
+
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => handleLinkPlatform(key)}
+              disabled={adding || !linkAppId.trim()}
+              style={btnPrimary(adding || !linkAppId.trim())}>
+              {adding ? "Đang liên kết..." : `Liên kết với ${platformName}`}
+            </button>
+            <button onClick={() => setAddMode("choose")} style={btnBack}>← Quay lại</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── STEP: CREATE ─────────────────────────────────────────
+    // (addMode === "create")
+    const missingFields = (
+      <>
         {key === "admob" && (
           app.admobPublisherId
             ? <div style={{ fontSize:12, color:C.accent, marginBottom:12 }}>
-                Du thong tin. Publisher: <span style={{ fontFamily:FM }}>{app.admobPublisherId}</span>
+                ✓ Đủ thông tin. Publisher: <span style={{ fontFamily:FM }}>{app.admobPublisherId}</span>
               </div>
             : <div style={{ fontSize:12, color:C.red, marginBottom:12 }}>
-                App nay khong co AdMob Publisher ID - khong the them vao AdMob.
+                ✗ App này không có AdMob Publisher ID — không thể tạo trên AdMob.
               </div>
         )}
 
@@ -293,11 +430,14 @@ export default function AppDetailPage() {
             <select style={sel} value={addForm.pangleCategoryCode}
               onChange={e => upd("pangleCategoryCode", e.target.value)}
               onClick={loadPangleCategories}>
-              <option value="">{pangleCatLoading ? "Dang tai..." : "- Chon category -"}</option>
-              {pangleCategories.map(c => (
-                <option key={c.code} value={c.code}>{c.label}</option>
-              ))}
+              <option value="">{pangleCatLoading ? "Đang tải..." : "- Chọn category -"}</option>
+              {pangleCategories.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
+            {isLive && app.bundleId && (
+              <div style={{ fontSize:11, color:C.text3, marginTop:4 }}>
+                Bundle ID sẽ được dùng: <span style={{ color:C.accent }}>{app.bundleId}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -307,7 +447,7 @@ export default function AppDetailPage() {
               <label style={lbl}>App Category <span style={{ color:C.red }}>*</span></label>
               <select style={sel} value={addForm.liftoffCategory}
                 onChange={e => upd("liftoffCategory", e.target.value)}>
-                <option value="">- Chon category -</option>
+                <option value="">- Chọn category -</option>
                 {LIFTOFF_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
@@ -320,6 +460,11 @@ export default function AppDetailPage() {
                 COPPA compliant (child-directed)
               </label>
             </div>
+            {isLive && app.bundleId && (
+              <div style={{ fontSize:11, color:C.text3, marginBottom:10 }}>
+                Bundle ID sẽ được dùng: <span style={{ color:C.accent }}>{app.bundleId}</span>
+              </div>
+            )}
           </>
         )}
 
@@ -333,18 +478,18 @@ export default function AppDetailPage() {
                   upd("mintegralStoreName", "");
                   upd("mintegralPreviewLink", "");
                 }}>
-                <option value="">- Chon store -</option>
+                <option value="">- Chọn store -</option>
                 <option value="google_play">Google Play</option>
                 <option value="amazon">Amazon Appstore</option>
                 <option value="other_store">Other Store</option>
-                <option value="not_live">Chua live (khong co store)</option>
+                <option value="not_live">Chưa live (không có store)</option>
               </select>
             </div>
             {addForm.mintegralAndroidStore === "other_store" && (
               <>
                 <div style={{ marginBottom:10 }}>
                   <label style={lbl}>Store Name <span style={{ color:C.red }}>*</span></label>
-                  <input style={inp} placeholder="Ten store..."
+                  <input style={inp} placeholder="Tên store..."
                     value={addForm.mintegralStoreName}
                     onChange={e => upd("mintegralStoreName", e.target.value)} />
                 </div>
@@ -356,36 +501,39 @@ export default function AppDetailPage() {
                 </div>
               </>
             )}
+            {isLive && app.bundleId && (
+              <div style={{ fontSize:11, color:C.text3, marginBottom:10 }}>
+                Package Name sẽ được dùng: <span style={{ color:C.accent }}>{app.bundleId}</span>
+              </div>
+            )}
           </>
         )}
 
         {key === "mintegral" && !isAndroid && (
           <div style={{ fontSize:12, color:C.accent, marginBottom:12 }}>
-            Du thong tin de them vao Mintegral (iOS).
+            ✓ Đủ thông tin để tạo trên Mintegral (iOS).
           </div>
         )}
+      </>
+    );
 
-        {/* Buttons */}
+    return (
+      <div style={{ marginTop:10, padding:14, borderRadius:8, border:`1px solid ${C.blue}`,
+        background:"rgba(77,158,255,0.04)" }}>
+        {infoSummary}
+
+        <div style={{ fontSize:11, fontWeight:700, color:C.blue, textTransform:"uppercase",
+          letterSpacing:"0.07em", marginBottom:10 }}>Tạo app mới trên {platformName}</div>
+
+        {missingFields}
+
         <div style={{ display:"flex", gap:8, marginTop:4 }}>
           <button onClick={() => handleAddPlatform(key)}
             disabled={adding || !canAdd(key)}
-            style={{
-              padding:"8px 18px", borderRadius:7, border:"none",
-              background: canAdd(key) ? C.blue : "#1a2030",
-              color: canAdd(key) ? C.ink : C.text3,
-              fontSize:12, fontWeight:700, cursor: (!adding && canAdd(key)) ? "pointer" : "not-allowed",
-              fontFamily:FS, opacity: adding ? 0.6 : 1,
-            }}>
-            {adding ? "Dang tao..." : `+ Them vao ${key.charAt(0).toUpperCase()+key.slice(1)}`}
+            style={btnPrimary(adding || !canAdd(key))}>
+            {adding ? "Đang tạo..." : `+ Tạo trên ${platformName}`}
           </button>
-          <button onClick={() => { setExpandedAdd(null); setAddMsg(null); }}
-            style={{
-              padding:"8px 14px", borderRadius:7,
-              border:`1px solid ${C.border2}`, background:"transparent",
-              color:C.text2, fontSize:12, cursor:"pointer", fontFamily:FS,
-            }}>
-            Huy
-          </button>
+          <button onClick={() => setAddMode("choose")} style={btnBack}>← Quay lại</button>
         </div>
       </div>
     );
@@ -472,17 +620,13 @@ export default function AppDetailPage() {
                     {statusBadge(p.status)}
                     {p.status === "none" && expandedAdd !== p.key && (
                       <button
-                        onClick={() => {
-                          setExpandedAdd(p.key);
-                          setAddMsg(null);
-                          if (p.key === "pangle") loadPangleCategories();
-                        }}
+                        onClick={() => openAddPanel(p.key)}
                         style={{
                           padding:"3px 10px", borderRadius:5, border:`1px solid ${C.blue}`,
                           background:C.blueDim, color:C.blue, fontSize:10, fontWeight:700,
                           cursor:"pointer", fontFamily:FS,
                         }}>
-                        + Them
+                        + Thêm
                       </button>
                     )}
                   </div>

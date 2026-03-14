@@ -106,23 +106,61 @@ function pangleSign(): Record<string, string | number> {
 }
 
 export const pangle = {
-  async createApp(appName: string, categoryCode: number, status: "test" | "live", downloadUrl?: string) {
+  async createApp(
+    appName: string,
+    categoryCode: number,
+    status: "test" | "live",
+    platform: "ANDROID" | "IOS",
+    downloadUrl?: string,
+    bundleId?: string
+  ) {
     const body: Record<string, unknown> = {
       ...pangleSign(),
       app_name: appName,
       app_category_code: categoryCode,
+      os: platform === "IOS" ? 2 : 1,
       status: status === "test" ? 6 : 2,
     };
+    if (bundleId) {
+      body.package_name = bundleId;
+    }
     if (status === "live" && downloadUrl) {
       body.download_url = downloadUrl;
     }
+
+    // Log exact request for debugging
+    const { sign: _s, ...bodyForLog } = body;
+    console.log("[PANGLE] createApp request:", JSON.stringify(bodyForLog));
+
     const res = await fetch(`${BASE}/union/media/open_api/site/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    console.log("[PANGLE] createApp response:", JSON.stringify(data));
     if (data.code === 50007) {
+      // App may already exist on Pangle. Try to resolve and link by bundleId/name.
+      const normalize = (v: string) => v.trim().toLowerCase();
+      const apps = await pangle.listApps();
+      const byBundle = bundleId
+        ? apps.find((a) => a.bundleId && normalize(a.bundleId) === normalize(bundleId))
+        : undefined;
+      const byName = apps.find((a) => normalize(a.name) === normalize(appName));
+      const matched = byBundle ?? byName;
+
+      if (matched?.appId) {
+        return {
+          code: 0,
+          message: "EXISTING_APP_LINKED",
+          data: {
+            app_id: matched.appId,
+            status: 1,
+            existing: true,
+          },
+        };
+      }
+
       throw new Error(
         `PANGLE_APP_DUPLICATED_OR_PENDING: ${data.message ?? "App đã tồn tại hoặc đang chờ duyệt"}`
       );
@@ -132,6 +170,36 @@ export const pangle = {
     if (!data?.data?.app_id) {
       throw new Error(`Pangle createApp error: response thiếu app_id (${JSON.stringify(data)})`);
     }
+
+    // Verify the account has ad-placement authority by probing /code/create.
+    // If "third level style auth" error occurs, the app was created
+    // but won't be usable/visible because the Pangle account lacks approval.
+    let authOk = true;
+    try {
+      const probe = {
+        ...pangleSign(),
+        app_id: data.data.app_id,
+        ad_slot_type: 2,
+        ad_slot_name: "__probe__",
+        bidding_type: 1,
+        render_type: 1,
+        slide_banner: 1,
+      };
+      const probeRes = await fetch(`${BASE}/union/media/open_api/code/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(probe),
+      });
+      const probeData = await probeRes.json();
+      console.log("[PANGLE] auth probe response:", JSON.stringify(probeData));
+      if (probeData.code === 50003) {
+        authOk = false;
+      }
+    } catch {
+      // probe failed — don't block, just flag
+    }
+
+    data.data.auth_ok = authOk;
     return data;
   },
 
@@ -162,24 +230,10 @@ export const pangle = {
   },
 
   async listApps(): Promise<Array<{ appId: string; name: string; bundleId?: string; platform?: string }>> {
-    try {
-      const body = { ...pangleSign(), page: 1, page_size: 200 };
-      const res = await fetch(`${BASE}/union/media/open_api/site/list`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.code !== 0 || !data.data?.site_list) return [];
-      return (data.data.site_list as any[]).map((a) => ({
-        appId: String(a.app_id ?? a.site_id ?? ""),
-        name: String(a.app_name ?? a.site_name ?? ""),
-        bundleId: a.bundle_id ?? a.package_name ?? undefined,
-        platform: a.platform_name ?? undefined,
-      }));
-    } catch {
-      return [];
-    }
+    // NOTE: Pangle Open API does NOT provide a /site/list endpoint (returns 404).
+    // This function is kept as a stub for future use if Pangle adds the endpoint.
+    console.warn("[PANGLE] listApps called but /site/list is not available in Pangle Open API");
+    return [];
   },
 };
 

@@ -30,7 +30,7 @@ export type CreateAppInput = {
 
 export type PlatformKey = "admob" | "pangle" | "liftoff" | "mintegral";
 
-export type PlatformStatus = "none" | "ok" | "verifying" | "error";
+export type PlatformStatus = "none" | "ok" | "verifying" | "error" | "warning";
 
 /** Result from one platform API call */
 export type PlatformResult = {

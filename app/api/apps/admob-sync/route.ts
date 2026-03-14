@@ -19,9 +19,12 @@ async function getAllAdmobApps(email: string, publisherId: string) {
   return apps;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const email = await getSessionEmail();
   if (!email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const url = new URL(req.url);
+  const lite = url.searchParams.get("lite") === "true";
 
   // Get or resolve publisherId
   let record = await db.userToken.findUnique({ where: { email } });
@@ -52,12 +55,13 @@ export async function GET() {
   }
 
   try {
+    // lite=true: skip cross-platform API calls, only check AdMob + local DB
     const [admobResult, liftoffResult, pangleResult, mintegralResult, dbResult] =
       await Promise.allSettled([
         getAllAdmobApps(email, publisherId),
-        liftoff.listApps(),
-        pangle.listApps(),
-        mintegral.listApps(),
+        lite ? Promise.resolve([]) : liftoff.listApps(),
+        lite ? Promise.resolve([]) : pangle.listApps(),
+        lite ? Promise.resolve([]) : mintegral.listApps(),
         db.app.findMany({
           where: { email },
           select: {

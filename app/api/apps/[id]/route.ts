@@ -94,7 +94,9 @@ export async function PATCH(
         app.name,
         categoryCode,
         isLive ? "live" : "test",
-        isLive ? app.storeUrl ?? undefined : undefined
+        platform,
+        isLive ? app.storeUrl ?? undefined : undefined,
+        app.bundleId ?? undefined
       );
       const appId = result?.data?.app_id != null ? String(result.data.app_id) : null;
       const pStatus = result?.data?.status;
@@ -174,9 +176,43 @@ export async function POST(
   }
 
   const body = await req.json();
+
+  // ── Case: Link existing platform App ID (user already has app on that platform) ──
+  if (body.linkPlatform) {
+    const linkPlatform = body.linkPlatform as PlatformKey;
+    if (!["admob", "pangle", "liftoff", "mintegral"].includes(linkPlatform)) {
+      return NextResponse.json({ error: "linkPlatform không hợp lệ" }, { status: 400 });
+    }
+    const existingAppId = String(body.existingAppId ?? "").trim();
+    if (!existingAppId) {
+      return NextResponse.json({ error: "existingAppId bắt buộc để liên kết" }, { status: 400 });
+    }
+    const linkStatusField = (`${linkPlatform}Status`) as keyof typeof app;
+    if (app[linkStatusField] !== "none") {
+      return NextResponse.json({
+        error: `${linkPlatform} đã ở trạng thái "${app[linkStatusField]}" — không thể liên kết lại`,
+      }, { status: 400 });
+    }
+    const updateData: Record<string, unknown> = {
+      [`${linkPlatform}AppId`]: existingAppId,
+      [`${linkPlatform}Status`]: "ok",
+      [`${linkPlatform}Error`]: null,
+    };
+    const updated = await db.app.update({ where: { id }, data: updateData });
+    await auditLog({
+      email,
+      action: `link_${linkPlatform}`,
+      publisherId: app.admobPublisherId ?? "none",
+      payload: { appId: id, platform: linkPlatform, existingAppId },
+      result: updateData,
+      statusCode: 200,
+    });
+    return NextResponse.json({ app: updated });
+  }
+
   const addPlatform = body.addPlatform as PlatformKey | undefined;
   if (!addPlatform || !["admob","pangle","liftoff","mintegral"].includes(addPlatform)) {
-    return NextResponse.json({ error: "addPlatform bắt buộc" }, { status: 400 });
+    return NextResponse.json({ error: "addPlatform hoặc linkPlatform bắt buộc" }, { status: 400 });
   }
 
   // Must be "none" to add — use Retry for "error" status
@@ -237,7 +273,9 @@ export async function POST(
       const result = await pangle.createApp(
         currentApp.name, categoryCode,
         isLive ? "live" : "test",
-        isLive ? currentApp.storeUrl ?? undefined : undefined
+        platform,
+        isLive ? currentApp.storeUrl ?? undefined : undefined,
+        currentApp.bundleId ?? undefined
       );
       const appId = result?.data?.app_id != null ? String(result.data.app_id) : null;
       const pStatus = result?.data?.status;

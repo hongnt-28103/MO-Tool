@@ -76,12 +76,14 @@ export const mintegral = {
     adType: string;
     hbUnitName?: string;
   }) {
+    // hb_unit_name creates a Bidding ad unit; default to placement name when not specified
+    const hbUnitName = params.hbUnitName ?? params.placementName;
     return mintegralPost("/v2/placement/open_api_create", {
       app_id: params.appId,
       placement_name: params.placementName,
       ad_type: params.adType,
       integrate_type: "sdk",
-      ...(params.hbUnitName ? { hb_unit_name: params.hbUnitName } : {}),
+      hb_unit_name: hbUnitName,
     });
   },
 

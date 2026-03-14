@@ -22,18 +22,12 @@ type AdUnit = {
   mintegralPlacementId?: string; mintegralUnitId?: string; mintegralAppId?: string;
   mintegralAppKey?: string; metaPlacementId?: string;
 };
-type AppRecord = {
-  id: string;
-  name: string;
+type SyncApp = {
+  admobAppId: string;
+  displayName: string;
   platform: string;
-  admobStatus: string;
-  pangleStatus: string;
-  liftoffStatus: string;
-  mintegralStatus: string;
-  admobAppId: string | null;
-  pangleAppId: string | null;
-  liftoffAppId: string | null;
-  mintegralAppId: string | null;
+  bundleId?: string;
+  dbId?: string | null;
 };
 type CG  = { name: string; mode: "INCLUDE"|"EXCLUDE"; countries: string[] };
 type UIS = { groupBy: "AD_FORMAT"|"AD_UNIT"; ecpmFloor: boolean; countryMode: "ALL"|"GROUPS" };
@@ -146,9 +140,11 @@ export default function MappingPage() {
   const [step,   setStep]   = useState<0|1|2|3>(0);
   const [units,  setUnits]  = useState<AdUnit[]>([]);
   const [code,   setCode]   = useState("");
-  const [apps, setApps] = useState<AppRecord[]>([]);
+  const [apps, setApps] = useState<SyncApp[]>([]);
   const [appsLoading, setAppsLoading] = useState(true);
+  const [appsError, setAppsError] = useState<string | null>(null);
   const [selectedAppId, setSelectedAppId] = useState("");
+  const [importingApp, setImportingApp] = useState(false);
   const [ui,     setUi]     = useState<UIS>({groupBy:"AD_FORMAT",ecpmFloor:true,countryMode:"ALL"});
   const [cgs,    setCgs]    = useState<CG[]>([]);
   const [nets,   setNets]   = useState(["pangle","liftoff","mintegral"]);
@@ -163,14 +159,53 @@ export default function MappingPage() {
   const fRef = useRef<HTMLInputElement>(null);
 
   useEffect(()=>{
-    fetch("/api/apps")
+    fetch("/api/apps/admob-sync?lite=true")
       .then((r)=>r.json())
-      .then((d)=>{ if (d.apps) setApps(d.apps); })
-      .catch(()=>{})
+      .then((d)=>{
+        if (d.apps) setApps(d.apps);
+        else if (d.error) setAppsError(d.error);
+      })
+      .catch((e)=>setAppsError(e.message))
       .finally(()=>setAppsLoading(false));
   },[]);
 
-  const selectedApp = apps.find((a)=>a.id===selectedAppId);
+  const selectedApp = apps.find((a)=>{
+    // Match by dbId (after import) or by admobAppId (before import)
+    return a.dbId === selectedAppId || a.admobAppId === selectedAppId;
+  });
+
+  const handleSelectApp = async (value: string) => {
+    if (!value) { setSelectedAppId(""); return; }
+    const app = apps.find((a) => a.admobAppId === value);
+    if (!app) { setSelectedAppId(value); return; }
+    // If already in DB, use the DB id directly
+    if (app.dbId) { setSelectedAppId(app.dbId); return; }
+    // Otherwise auto-import into DB first
+    setImportingApp(true);
+    try {
+      const res = await fetch("/api/apps/admob-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          admobAppId: app.admobAppId,
+          displayName: app.displayName,
+          platform: app.platform,
+          bundleId: app.bundleId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import thất bại");
+      // Update local app list with new dbId
+      setApps((prev) => prev.map((a) =>
+        a.admobAppId === app.admobAppId ? { ...a, dbId: data.app.id } : a
+      ));
+      setSelectedAppId(data.app.id);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Import app thất bại");
+    } finally {
+      setImportingApp(false);
+    }
+  };
 
   // Auto-load from sessionStorage (from ad unit creation flow)
   useEffect(()=>{
@@ -207,7 +242,7 @@ export default function MappingPage() {
 
   useEffect(()=>{
     if (!selectedApp) return;
-    setCode((prevCode)=>prevCode || selectedApp.name);
+    setCode((prevCode)=>prevCode || selectedApp.displayName);
   },[selectedApp]);
 
   const sc = resolve(ui);
@@ -220,7 +255,7 @@ export default function MappingPage() {
     applovin: !!sdkKey,
   };
   const canPrev  = (ui.countryMode==="ALL" || (cgs.length>0 && cgs.every(g=>g.name&&g.countries.length>0) && !dupNames.length))
-    && !!selectedAppId
+    && !!selectedAppId && !importingApp
     && units.length>0
     && !!code.trim()
     && nets.length>0
@@ -301,7 +336,7 @@ export default function MappingPage() {
           networks:nets,
           sdkKeyApplovin:sdkKey||undefined,
           appId:selectedAppId,
-          appName:selectedApp?.name,
+          appName:selectedApp?.displayName,
         })});
       const d=await r.json(); if(!r.ok) throw new Error(d.error??"Execute thất bại");
       setRes(d);
@@ -375,20 +410,35 @@ export default function MappingPage() {
                     <div style={{height:40,background:C.border,borderRadius:8,opacity:.5}}/>
                   ) : (
                     <>
-                      <label style={s.lbl}>App <span style={{color:C.red}}>*</span></label>
-                      <select
-                        style={{...s.inp,cursor:"pointer"}}
-                        value={selectedAppId}
-                        onChange={(e)=>setSelectedAppId(e.target.value)}>
-                        <option value="">- Chọn app -</option>
-                        {apps.map((a)=>(
-                          <option key={a.id} value={a.id}>{a.name} ({a.platform})</option>
-                        ))}
-                      </select>
-                      {selectedApp && (
-                        <div style={{marginTop:10,fontSize:11.5,color:C.text2,lineHeight:1.6}}>
-                          Đang mapping cho: <strong>{selectedApp.name}</strong> ({selectedApp.platform})
-                        </div>
+                      <label style={s.lbl}>App (từ tài khoản AdMob) <span style={{color:C.red}}>*</span></label>
+                      {appsError ? (
+                        <div style={{fontSize:12,color:C.red,marginTop:4}}>{appsError}</div>
+                      ) : (
+                        <>
+                          <select
+                            style={{...s.inp,cursor: importingApp ? "not-allowed" : "pointer", opacity: importingApp ? 0.7 : 1}}
+                            value={selectedApp?.admobAppId ?? ""}
+                            disabled={importingApp}
+                            onChange={(e)=>handleSelectApp(e.target.value)}>
+                            <option value="">- Chọn app -</option>
+                            {apps.map((a)=>(
+                              <option key={a.admobAppId} value={a.admobAppId}>
+                                {a.displayName} ({a.platform}){a.dbId ? "" : " — chưa import"}
+                              </option>
+                            ))}
+                          </select>
+                          {importingApp && (
+                            <div style={{marginTop:6,fontSize:11.5,color:C.text3}}>
+                              <span className="sp">↻</span> Đang import app vào hệ thống...
+                            </div>
+                          )}
+                          {selectedApp && !importingApp && (
+                            <div style={{marginTop:8,fontSize:11.5,color:C.text2,lineHeight:1.6}}>
+                              Đang mapping cho: <strong>{selectedApp.displayName}</strong> ({selectedApp.platform})
+                              {selectedApp.bundleId && <> — <span style={{fontFamily:FM,fontSize:11,color:C.text3}}>{selectedApp.bundleId}</span></>}
+                            </div>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -487,7 +537,7 @@ export default function MappingPage() {
         {step===1&&(
           <div style={{maxWidth:680}}>
             <div style={s.alrt(C.blue,C.blueDim,"rgba(37,99,235,.25)")}>
-              📱 App mapping: <strong>{selectedApp?.name ?? "-"}</strong>
+              📱 App mapping: <strong>{selectedApp?.displayName ?? "-"}</strong>
               &nbsp;•&nbsp; Platform: {selectedApp?.platform ?? "-"}
               &nbsp;•&nbsp; CSV rows: {units.length}
             </div>
@@ -664,7 +714,7 @@ export default function MappingPage() {
         {step===2&&prev&&(
           <div>
             <div style={{...s.alrt(C.blue,C.blueDim,"rgba(37,99,235,.25)")}}>
-              Đang preview cho app: <strong>{selectedApp?.name ?? "-"}</strong>
+              Đang preview cho app: <strong>{selectedApp?.displayName ?? "-"}</strong>
             </div>
             <div style={{display:"flex",gap:10,marginBottom:20}}>
               {[{l:"Kịch bản",v:prev.scenario,c:C.blue},{l:"Groups",v:prev.groupCount,c:C.accent},{l:"Ad Units",v:units.length,c:C.yellow}].map(x=>(
