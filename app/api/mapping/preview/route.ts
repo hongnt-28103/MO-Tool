@@ -4,7 +4,6 @@ import {
   resolveScenario,
   detectAdFormat,
   detectFloorTier,
-  detectInappObd,
   buildGroupName,
   estimateGroupCount,
   SCENARIO_LABELS,
@@ -58,9 +57,15 @@ export async function POST(req: NextRequest) {
 
   for (const cg of cgList) {
     for (const unit of adUnits) {
-      const format = unit.format ?? detectAdFormat(unit.name) ?? "INTERSTITIAL";
+      const detected = detectAdFormat(unit.name);
+      if (!unit.format && !detected) {
+        return NextResponse.json(
+          { error: `Không nhận diện được ad format từ tên "${unit.name}". Tên phải chứa: inter, reward, aoa, banner, native.` },
+          { status: 400 }
+        );
+      }
+      const format = unit.format ?? detected!;
       const floorTier = detectFloorTier(unit.name);
-      const inappObd = detectInappObd(unit.name);
 
       const groupName = buildGroupName({
         appCode,
@@ -69,7 +74,6 @@ export async function POST(req: NextRequest) {
         adFormat: format,
         floorTier,
         countryGroupName: cg?.name,
-        inappObd: inappObd ?? undefined,
       });
 
       if (!seen.has(groupName)) {
@@ -82,7 +86,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const formats = [...new Set(adUnits.map((u) => u.format ?? detectAdFormat(u.name) ?? "INTERSTITIAL"))];
+  const formats = [...new Set(adUnits.map((u) => u.format ?? detectAdFormat(u.name)!))];
   const tiers = adUnits.map((u) => detectFloorTier(u.name));
 
   return NextResponse.json({

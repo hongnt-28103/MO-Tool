@@ -39,11 +39,11 @@ type CG  = { name: string; mode: "INCLUDE"|"EXCLUDE"; countries: string[] };
 type UIS = { groupBy: "AD_FORMAT"|"AD_UNIT"; ecpmFloor: boolean; countryMode: "ALL"|"GROUPS" };
 
 const FORMAT_DETECT: [string, RegExp][] = [
-  ["INTERSTITIAL", /inter|full|fs/i],
-  ["REWARDED", /reward|rv|video/i],
-  ["APP_OPEN", /open|splash|aoa/i],
-  ["BANNER", /mrec|300x250|banner|top|bottom/i],
-  ["NATIVE", /native|feed|card/i],
+  ["INTERSTITIAL", /inter/i],
+  ["REWARDED", /reward/i],
+  ["APP_OPEN", /aoa/i],
+  ["BANNER", /banner/i],
+  ["NATIVE", /native/i],
 ];
 
 const CSV_TEMPLATE = [

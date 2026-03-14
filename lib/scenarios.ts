@@ -40,14 +40,11 @@ export type FloorTier = "high" | "med" | "ap";
 export function detectFloorTier(name: string): FloorTier {
   const lower = name.toLowerCase();
 
-  // High floor keywords/suffixes: _high, -high, high, _1, _2
-  if (/(^|[-_\s])high\b|_1\b|_2\b/.test(lower)) return "high";
-
-  // Medium floor keywords/suffixes: _med, -med, medium
-  if (/(^|[-_\s])med\b|(^|[-_\s])medium\b/.test(lower)) return "med";
-
-  // Explicit all-price markers
-  if (/(^|[-_\s])ap\b|all[\s_-]?price/.test(lower)) return "ap";
+  // Match keyword before or after separator (- _ . space) or at start/end
+  // high/med/ap can be followed by digits (e.g. high1, high2)
+  if (/(^|[-_.\s])high\d*([-_.\s]|$)/.test(lower)) return "high";
+  if (/(^|[-_.\s])med\d*([-_.\s]|$)/.test(lower)) return "med";
+  if (/(^|[-_.\s])ap\d*([-_.\s]|$)/.test(lower)) return "ap";
 
   return "ap";
 }
@@ -57,20 +54,11 @@ export function detectAdFormat(
   name: string
 ): "BANNER" | "INTERSTITIAL" | "REWARDED" | "NATIVE" | "APP_OPEN" | null {
   const lower = name.toLowerCase();
-  if (/inter|full|fs/.test(lower)) return "INTERSTITIAL";
-  if (/reward|rv|video/.test(lower)) return "REWARDED";
-  if (/open|splash|aoa/.test(lower)) return "APP_OPEN";
-  if (/mrec|300x250/.test(lower)) return "BANNER";
-  if (/banner|top|bottom/.test(lower)) return "BANNER";
-  if (/native|feed|card/.test(lower)) return "NATIVE";
-  return null;
-}
-
-/** Detect in-app vs OBD from ad unit name (Tera) */
-export function detectInappObd(name: string): "inapp" | "obd" | null {
-  const lower = name.toLowerCase();
-  if (/inapp/.test(lower)) return "inapp";
-  if (/_fo|[-]fo|^fo/.test(lower)) return "obd";
+  if (lower.includes("inter")) return "INTERSTITIAL";
+  if (lower.includes("reward")) return "REWARDED";
+  if (lower.includes("aoa")) return "APP_OPEN";
+  if (lower.includes("banner")) return "BANNER";
+  if (lower.includes("native")) return "NATIVE";
   return null;
 }
 
@@ -82,30 +70,24 @@ export function buildGroupName(params: {
   adFormat?: string;
   floorTier?: FloorTier;
   countryGroupName?: string;
-  inappObd?: "inapp" | "obd";
 }): string {
   const { appCode, scenario, adUnitName, adFormat, floorTier, countryGroupName } = params;
+  const fmt = adFormat?.toLowerCase();
   switch (scenario) {
     case "S1":
+      return `${appCode} - ${adUnitName}`;
     case "S4":
-      // mã app - ad_unit_name [- country_group]
-      return countryGroupName
-        ? `${appCode} - ${adUnitName} - ${countryGroupName}`
-        : `${appCode} - ${adUnitName}`;
+      return `${appCode} - ${adUnitName} - ${countryGroupName}`;
     case "S2":
+      // ecpmFloor OFF → allfloor
+      return `${appCode} - ${fmt} - allfloor`;
     case "S5":
-      // mã app - ad format [- country_group]
-      return countryGroupName
-        ? `${appCode} - ${adFormat?.toLowerCase()} - ${countryGroupName}`
-        : `${appCode} - ${adFormat?.toLowerCase()}`;
+      return `${appCode} - ${fmt} - allfloor - ${countryGroupName}`;
     case "S3":
-    case "S6": {
-      // Standard: mã app - ad format - high/normal [- country_group]
-      const tier = floorTier === "high" ? "high" : "normal";
-      return countryGroupName
-        ? `${appCode} - ${adFormat?.toLowerCase()} - ${tier} - ${countryGroupName}`
-        : `${appCode} - ${adFormat?.toLowerCase()} - ${tier}`;
-    }
+      // ecpmFloor ON → 3 bucket: high / med / ap
+      return `${appCode} - ${fmt} - ${floorTier ?? "ap"}`;
+    case "S6":
+      return `${appCode} - ${fmt} - ${floorTier ?? "ap"} - ${countryGroupName}`;
   }
 }
 
@@ -119,15 +101,15 @@ export function estimateGroupCount(params: {
 }): number {
   const { scenario, adUnitCount, formats, floorTiers, countryGroups } = params;
   const cg = countryGroups.length || 1;
-  const hasHigh = floorTiers.includes("high");
-  const hasNormal = floorTiers.some((t) => t !== "high");
-  const highNormalBucketCount = Number(hasHigh) + Number(hasNormal);
+  // 3 bucket: high, med, ap — count unique tiers present
+  const uniqueTiers = new Set(floorTiers);
+  const tierCount = Math.max(1, uniqueTiers.size);
   switch (scenario) {
     case "S1": return adUnitCount;
     case "S2": return formats.length;
-    case "S3": return formats.length * Math.max(1, highNormalBucketCount);
+    case "S3": return formats.length * tierCount;
     case "S4": return adUnitCount * cg;
     case "S5": return formats.length * cg;
-    case "S6": return formats.length * Math.max(1, highNormalBucketCount) * cg;
+    case "S6": return formats.length * tierCount * cg;
   }
 }

@@ -46,19 +46,21 @@ type UnitResult = {
 
 /* ─── Format detection ─── */
 const FORMAT_DETECT: [string, RegExp][] = [
-  ["INTERSTITIAL", /inter|full|fs/i],
-  ["REWARDED",     /reward|rv|video/i],
-  ["APP_OPEN",     /open|splash|aoa/i],
-  ["BANNER",       /mrec|300x250|banner|top|bottom/i],
-  ["NATIVE",       /native|feed|card/i],
+  ["INTERSTITIAL", /inter/i],
+  ["REWARDED",     /reward/i],
+  ["APP_OPEN",     /aoa/i],
+  ["BANNER",       /banner/i],
+  ["NATIVE",       /native/i],
 ];
 function detectFormat(name:string):string|null {
   for (const [fmt,re] of FORMAT_DETECT) if (re.test(name)) return fmt;
   return null;
 }
 function detectTier(name:string):"high"|"med"|"ap" {
-  if(/_high\b|_1\b|_2\b/i.test(name)) return "high";
-  if(/_med\b|_medium\b/i.test(name)) return "med";
+  const lower = name.toLowerCase();
+  if (/(^|[-_.\s])high\d*([-_.\s]|$)/.test(lower)) return "high";
+  if (/(^|[-_.\s])med\d*([-_.\s]|$)/.test(lower)) return "med";
+  if (/(^|[-_.\s])ap\d*([-_.\s]|$)/.test(lower)) return "ap";
   return "ap";
 }
 
@@ -467,14 +469,14 @@ function AdUnitsContent() {
                 <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}>
                   <div style={{fontSize:12,fontWeight:600,color:C.text2,marginBottom:10}}>Ad Name Rule:</div>
                   <div style={{fontSize:11.5,color:C.text3,lineHeight:1.7}}>
-                    • Chứa <code style={{background:C.ink3,padding:"1px 4px",borderRadius:3}}>_high</code> → tier <strong style={{color:C.red}}>HIGH</strong> (eCPM floor cao)<br/>
-                    • Chứa <code style={{background:C.ink3,padding:"1px 4px",borderRadius:3}}>_med</code> → tier <strong style={{color:C.yellow}}>MEDIUM</strong><br/>
+                    • Chứa <code style={{background:C.ink3,padding:"1px 4px",borderRadius:3}}>high</code> (trước/sau separator) → tier <strong style={{color:C.red}}>HIGH</strong> (eCPM floor cao)<br/>
+                    • Chứa <code style={{background:C.ink3,padding:"1px 4px",borderRadius:3}}>med</code> (trước/sau separator) → tier <strong style={{color:C.yellow}}>MEDIUM</strong><br/>
                     • Còn lại → tier <strong style={{color:C.accent}}>ALL PRICE</strong>
                   </div>
                 </div>
                 <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginTop:14}}>
                   <div style={{fontSize:12,fontWeight:600,color:C.text2,marginBottom:10}}>Format detect:</div>
-                  {[["inter/full/fs","INTERSTITIAL"],["reward/rv/video","REWARDED"],["open/splash/aoa","APP_OPEN"],["mrec/banner/300x250","BANNER"],["native/feed/card","NATIVE"]].map(([k,v])=>(
+                  {[["inter","INTERSTITIAL"],["reward","REWARDED"],["aoa","APP_OPEN"],["banner","BANNER"],["native","NATIVE"]].map(([k,v])=>(
                     <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:11.5,marginBottom:6}}>
                       <span style={{fontFamily:FM,color:C.text3}}>{k}</span>
                       <span style={{color:C.accent,fontWeight:600}}>→ {v}</span>

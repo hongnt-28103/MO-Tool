@@ -84,7 +84,11 @@ export async function POST(req: NextRequest) {
 
   // Pre-process units: detect format & tier
   const processed = units.map(u => {
-    const format = u.format ?? detectAdFormat(u.name) ?? "INTERSTITIAL";
+    const detected = detectAdFormat(u.name);
+    if (!u.format && !detected) {
+      throw new Error(`Không nhận diện được ad format từ tên "${u.name}". Tên phải chứa: inter, reward, aoa, banner, native.`);
+    }
+    const format = u.format ?? detected!;
     const tier = detectFloorTier(u.name);
     return { name: u.name, format, tier };
   });

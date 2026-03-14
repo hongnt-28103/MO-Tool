@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
 
   for (const unit of adUnits) {
     const fragment = unit.adUnitId.split("/").pop()!;
-    const format = unit.format ?? detectAdFormat(unit.name) ?? "INTERSTITIAL";
+    const format = unit.format ?? detectAdFormat(unit.name) ?? (() => { throw new Error(`Không nhận diện được ad format từ tên "${unit.name}". Tên phải chứa: inter, reward, aoa, banner, native.`); })();
 
     // Pangle mapping
     if (networks.includes("pangle") && pangleSource && unit.panglePlacementId) {
@@ -338,7 +338,7 @@ export async function POST(req: NextRequest) {
 
   for (const cg of cgList) {
     for (const unit of adUnits) {
-      const format = unit.format ?? detectAdFormat(unit.name) ?? "INTERSTITIAL";
+      const format = unit.format ?? detectAdFormat(unit.name) ?? (() => { throw new Error(`Không nhận diện được ad format từ tên "${unit.name}". Tên phải chứa: inter, reward, aoa, banner, native.`); })();
       const floorTier = detectFloorTier(unit.name);
 
       const groupName = buildGroupName({
