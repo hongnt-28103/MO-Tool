@@ -9,7 +9,7 @@ export default function GlobalError({
 }) {
   return (
     <html lang="vi">
-      <body style={{ margin: 0, minHeight: "100vh", display: "grid", placeItems: "center", background: "#F8FAFC", color: "#0F172A", fontFamily: "system-ui" }}>
+      <body style={{ margin: 0, minHeight: "100vh", display: "grid", placeItems: "center", background: "#F8FAFC", color: "#0F172A", fontFamily: "Arial, sans-serif" }}>
         <div style={{ width: "min(560px, 92vw)", border: "1px solid #E2E8F0", borderRadius: 12, background: "#FFFFFF", padding: 20 }}>
           <h2 style={{ marginBottom: 8, fontSize: 20 }}>Ứng dụng gặp lỗi nghiêm trọng</h2>
           <p style={{ color: "#475569", marginBottom: 8 }}>Vui lòng tải lại trang hoặc thử lại.</p>

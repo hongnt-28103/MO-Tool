@@ -160,6 +160,27 @@ export const pangle = {
       throw new Error(`Pangle createPlacement error: ${data.code} ${data.message}`);
     return data;
   },
+
+  async listApps(): Promise<Array<{ appId: string; name: string; bundleId?: string; platform?: string }>> {
+    try {
+      const body = { ...pangleSign(), page: 1, page_size: 200 };
+      const res = await fetch(`${BASE}/union/media/open_api/site/list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.code !== 0 || !data.data?.site_list) return [];
+      return (data.data.site_list as any[]).map((a) => ({
+        appId: String(a.app_id ?? a.site_id ?? ""),
+        name: String(a.app_name ?? a.site_name ?? ""),
+        bundleId: a.bundle_id ?? a.package_name ?? undefined,
+        platform: a.platform_name ?? undefined,
+      }));
+    } catch {
+      return [];
+    }
+  },
 };
 
 /** Map AdMob ad format to Pangle ad_slot_type */

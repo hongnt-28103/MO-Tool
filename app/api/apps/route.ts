@@ -211,6 +211,28 @@ export async function POST(req: NextRequest) {
   const input = validation.data;
   const isLive = input.mode === "live";
 
+  // ── Deduplication check ───────────────────────────────────
+  const dedupConditions: { name?: string; storeUrl?: string; bundleId?: string }[] = [];
+  dedupConditions.push({ name: input.appName });
+  if (input.storeUrl?.trim()) dedupConditions.push({ storeUrl: input.storeUrl.trim() });
+  if (input.bundleId?.trim()) dedupConditions.push({ bundleId: input.bundleId.trim() });
+
+  const duplicate = await db.app.findFirst({
+    where: { email, OR: dedupConditions },
+    select: { id: true, name: true, admobStatus: true, pangleStatus: true, liftoffStatus: true, mintegralStatus: true },
+  });
+  if (duplicate) {
+    return NextResponse.json(
+      {
+        error: "Duplicate detected",
+        duplicateId: duplicate.id,
+        duplicateName: duplicate.name,
+        message: `App "${duplicate.name}" đã tồn tại trong hệ thống. Vui lòng dùng "Add Network" trên app đó thay vì tạo mới.`,
+      },
+      { status: 409 }
+    );
+  }
+
   // Resolve AdMob publisher from DB (auto-detected based on login email)
   const record = await db.userToken.findUnique({ where: { email } });
   const admobPublisherId = record?.publisherId;

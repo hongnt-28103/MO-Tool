@@ -13,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <style dangerouslySetInnerHTML={{ __html: `
           *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
           html { font-size: 14px; }
+          * { font-family: Arial, sans-serif !important; }
           body { background: #F8FAFC; color: #0F172A; min-height: 100vh; line-height: 1.5; -webkit-font-smoothing: antialiased; }
         `}} />
       </head>

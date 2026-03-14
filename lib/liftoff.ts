@@ -115,6 +115,21 @@ export const liftoff = {
       }),
     });
   },
+
+  async listApps(): Promise<Array<{ id: string; name: string; platform: string; bundleId?: string }>> {
+    try {
+      const result = await liftoffFetch("/applications");
+      const list: any[] = Array.isArray(result) ? result : (result?.data ?? []);
+      return list.map((app: any) => ({
+        id: String(app.id ?? app._id ?? ""),
+        name: String(app.name ?? ""),
+        platform: String(app.platform ?? "").toUpperCase(),
+        bundleId: app.store?.id ?? app.bundleId ?? undefined,
+      }));
+    } catch {
+      return [];
+    }
+  },
 };
 
 /** Map AdMob ad format to Liftoff placement type */

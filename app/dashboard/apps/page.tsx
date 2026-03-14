@@ -14,6 +14,24 @@ type CreateAppResult = {
   hasErrors: boolean;
 };
 
+type SyncApp = {
+  admobAppId: string;
+  displayName: string;
+  platform: "ANDROID" | "IOS";
+  bundleId?: string;
+  dbId?: string | null;
+  liftoff:   { status: string; appId?: string | null };
+  pangle:    { status: string; appId?: string | null };
+  mintegral: { status: string; appId?: string | null };
+};
+
+type SyncResult = {
+  publisherId: string;
+  total: number;
+  apps: SyncApp[];
+  platformErrors: { liftoff?: string | null; pangle?: string | null; mintegral?: string | null };
+};
+
 const C = {
   ink:"#F8FAFC", ink2:"#FFFFFF", panel:"#FFFFFF", border:"#E2E8F0", border2:"#CBD5E1",
   text:"#0F172A", text2:"#475569", text3:"#94A3B8",
@@ -75,9 +93,16 @@ export default function AppsPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CreateAppResult | null>(null);
   const [error, setError] = useState<string|null>(null);
+  const [duplicateId, setDuplicateId] = useState<string | null>(null);
   const [pangleCategories, setPangleCategories] = useState<PangleCategoryOption[]>([]);
   const [pangleCategorySource, setPangleCategorySource] = useState<"crawl" | "fallback" | null>(null);
   const [pangleCategoryLoading, setPangleCategoryLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"list" | "create">("list");
+  const [syncData, setSyncData] = useState<SyncResult | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncFilter, setSyncFilter] = useState("");
+  const [importingId, setImportingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!form.targets.pangle || pangleCategories.length > 0 || pangleCategoryLoading) return;
@@ -115,7 +140,7 @@ export default function AppsPage() {
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setDuplicateId(null);
     try {
       const res = await fetch("/api/apps", {
         method: "POST",
@@ -142,7 +167,10 @@ export default function AppsPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Tạo app thất bại");
+      if (!res.ok) {
+        if (res.status === 409 && data.duplicateId) setDuplicateId(data.duplicateId);
+        throw new Error(data.error ?? "Tạo app thất bại");
+      }
       setResult(data);
     } catch(e: any) {
       setError(e.message);
@@ -167,6 +195,52 @@ export default function AppsPage() {
     setError(null);
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (activeTab === "list" && !syncData && !syncLoading) loadSync(); }, [activeTab]);
+
+  const loadSync = async () => {
+    setSyncLoading(true); setSyncError(null);
+    try {
+      const res = await fetch("/api/apps/admob-sync");
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Đồng bộ thất bại");
+      setSyncData(d);
+    } catch (e: any) {
+      setSyncError(e.message);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleManageApp = async (app: SyncApp) => {
+    setImportingId(app.admobAppId);
+    try {
+      // If already in DB, navigate directly
+      if (app.dbId) {
+        router.push(`/dashboard/apps/${app.dbId}`);
+        return;
+      }
+      // Import to DB first
+      const res = await fetch("/api/apps/admob-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          admobAppId: app.admobAppId,
+          displayName: app.displayName,
+          platform: app.platform,
+          bundleId: app.bundleId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import thất bại");
+      router.push(`/dashboard/apps/${data.app.id}`);
+    } catch (e: any) {
+      setSyncError(`Import thất bại: ${e.message}`);
+    } finally {
+      setImportingId(null);
+    }
+  };
+
   return (
     <div style={{ fontFamily:FS, background:C.ink, minHeight:"100vh", color:C.text }}>
       <style>{`
@@ -183,13 +257,195 @@ export default function AppsPage() {
       <div style={{ height:52, background:C.ink2, borderBottom:`1px solid ${C.border}`,
         padding:"0 28px", display:"flex", alignItems:"center", justifyContent:"space-between",
         position:"sticky", top:0, zIndex:20 }}>
-        <div style={{ fontFamily:FD, fontWeight:700, fontSize:15 }}>Tạo Ứng dụng</div>
-        {result && <button style={btnG} onClick={reset}>+ Tạo app mới</button>}
+        <div style={{ fontFamily:FD, fontWeight:700, fontSize:15 }}>
+          {activeTab === "list" ? "Danh sách App AdMob" : "Tạo Ứng dụng"}
+        </div>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          {(["list", "create"] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              style={{ padding:"6px 14px", borderRadius:7, cursor:"pointer", fontFamily:FS,
+                fontSize:12.5, fontWeight:700,
+                border: activeTab === t ? "none" : `1px solid ${C.border2}`,
+                background: activeTab === t ? C.accent : "transparent",
+                color: activeTab === t ? "#fff" : C.text3 }}>
+              {t === "list" ? "📋 Danh sách" : "➕ Tạo App"}
+            </button>
+          ))}
+          {activeTab === "create" && result && <button style={btnG} onClick={reset}>+ Tạo app mới</button>}
+        </div>
       </div>
 
-      <div className="fu" style={{ padding:"32px", maxWidth:560 }}>
+      <div className="fu" style={{ padding:"32px", maxWidth: activeTab === "list" ? 860 : 560 }}>
 
-        {!result ? (
+        {activeTab === "list" ? (
+          /* === DANH SÁCH APP ADMOB === */
+          <div>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20, gap:12 }}>
+              <div>
+                <div style={{ fontFamily:FD, fontSize:16, fontWeight:800, marginBottom:4 }}>
+                  {syncData ? `${syncData.total} Apps` : "Danh sách App AdMob"}
+                </div>
+                {syncData && (
+                  <div style={{ fontSize:12, color:C.text3, fontFamily:"'IBM Plex Mono','Courier New',monospace" }}>
+                    {syncData.publisherId}
+                  </div>
+                )}
+              </div>
+              <button
+                style={{ ...btnG, opacity: syncLoading ? 0.6 : 1, cursor: syncLoading ? "not-allowed" : "pointer" }}
+                onClick={loadSync} disabled={syncLoading}>
+                {syncLoading ? <><span className="sp">↻</span> Đang tải...</> : "🔄 Đồng bộ"}
+              </button>
+            </div>
+
+            {syncError && (
+              <div style={{ padding:"11px 14px", background:C.redDim,
+                border:`1px solid rgba(220,38,38,0.3)`, borderRadius:8,
+                fontSize:13, color:C.red, marginBottom:16 }}>
+                ⚠ {syncError}
+              </div>
+            )}
+
+            {syncLoading && !syncData && (
+              <div style={{ textAlign:"center", padding:56, color:C.text3 }}>
+                <span className="sp" style={{ fontSize:28 }}>↻</span>
+                <div style={{ marginTop:14, fontSize:13 }}>Đang tải toàn bộ app từ AdMob...</div>
+              </div>
+            )}
+
+            {!syncLoading && !syncData && !syncError && (
+              <div style={{ textAlign:"center", padding:60, color:C.text3 }}>
+                <div style={{ fontSize:40, marginBottom:14 }}>📱</div>
+                <div style={{ fontSize:15, color:C.text2, fontWeight:700, marginBottom:6 }}>Danh sách App AdMob</div>
+                <div style={{ fontSize:13, marginBottom:28, lineHeight:1.8 }}>
+                  Đồng bộ để xem toàn bộ app trong tài khoản AdMob đang đăng nhập,<br/>
+                  kèm trạng thái kết nối Liftoff · Pangle · Mintegral.
+                </div>
+                <button style={btnP(false)} onClick={loadSync}>🔄 Đồng bộ từ AdMob</button>
+              </div>
+            )}
+
+            {syncData && (
+              <>
+                {Object.entries(syncData.platformErrors).filter(([, v]) => v).map(([k, v]) => (
+                  <div key={k} style={{ padding:"9px 12px", background:C.yellowDim,
+                    border:`1px solid rgba(217,119,6,0.25)`, borderRadius:8,
+                    fontSize:12, color:C.yellow, marginBottom:10 }}>
+                    ⚠ <strong style={{ textTransform:"capitalize" }}>{k}</strong>: {v as string}
+                  </div>
+                ))}
+
+                <div style={{ marginBottom:14 }}>
+                  <input style={inp} placeholder="🔍 Tìm theo tên app hoặc bundle ID..."
+                    value={syncFilter} onChange={e => setSyncFilter(e.target.value)} />
+                </div>
+
+                {(() => {
+                  const q = syncFilter.toLowerCase();
+                  const filtered = syncData.apps.filter(a =>
+                    !q || a.displayName.toLowerCase().includes(q) || (a.bundleId ?? "").toLowerCase().includes(q)
+                  );
+                  if (filtered.length === 0) return (
+                    <div style={{ textAlign:"center", padding:32, color:C.text3, fontSize:13 }}>
+                      Không tìm thấy app nào khớp với &ldquo;{syncFilter}&rdquo;.
+                    </div>
+                  );
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", padding:"4px 14px",
+                        fontSize:11, fontWeight:700, color:C.text3,
+                        textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                        <span>App ({filtered.length})</span>
+                        <span>Liftoff · Pangle · Mintegral</span>
+                      </div>
+                      {filtered.map(app => {
+                        const connected = [app.liftoff, app.pangle, app.mintegral]
+                          .filter(p => p.status === "ok").length;
+                        const isImporting = importingId === app.admobAppId;
+                        const networksToAdd = 3 - connected;
+                        return (
+                          <div key={app.admobAppId}
+                            style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 16px" }}>
+                            <div style={{ display:"flex", alignItems:"flex-start",
+                              justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
+                              <div style={{ flex:1, minWidth:180 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4, flexWrap:"wrap" }}>
+                                  <span style={{ fontSize:13.5, fontWeight:700, color:C.text }}>
+                                    {app.platform === "ANDROID" ? "🤖" : "🍎"} {app.displayName}
+                                  </span>
+                                  {app.dbId && (
+                                    <span style={{ fontSize:10, padding:"2px 7px", borderRadius:4,
+                                      background:C.accentDim, color:C.accent, fontWeight:700, flexShrink:0 }}>
+                                      MO Tool ✓
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize:11, color:C.text3,
+                                  fontFamily:"'IBM Plex Mono','Courier New',monospace", marginBottom:2 }}>
+                                  {app.admobAppId}
+                                </div>
+                                {app.bundleId && (
+                                  <div style={{ fontSize:11, color:C.text2,
+                                    fontFamily:"'IBM Plex Mono','Courier New',monospace" }}>
+                                    {app.bundleId}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", flexShrink:0 }}>
+                                {([
+                                  ["Liftoff", app.liftoff],
+                                  ["Pangle", app.pangle],
+                                  ["Mintegral", app.mintegral],
+                                ] as [string, SyncApp["liftoff"]][]).map(([label, pl]) => {
+                                  const ok = pl.status === "ok";
+                                  return (
+                                    <div key={label}
+                                      title={ok ? `ID: ${pl.appId ?? "—"}` : "Chưa tạo / chưa kết nối"}
+                                      style={{ padding:"3px 9px", borderRadius:6, fontSize:11.5, fontWeight:700,
+                                        cursor:"default",
+                                        background: ok ? C.accentDim : "rgba(148,163,184,0.10)",
+                                        color: ok ? C.accent : C.text3,
+                                        border:`1px solid ${ok ? "rgba(5,150,105,0.3)" : "rgba(203,213,225,0.4)"}` }}>
+                                      {ok ? "✓" : "—"} {label}
+                                    </div>
+                                  );
+                                })}
+                                <div style={{ padding:"3px 9px", borderRadius:6, fontSize:11.5, fontWeight:700,
+                                  background: connected===3 ? C.accentDim : connected>0 ? C.yellowDim : "rgba(220,38,38,0.08)",
+                                  color: connected===3 ? C.accent : connected>0 ? C.yellow : C.red,
+                                  border:`1px solid ${connected===3 ? "rgba(5,150,105,0.3)" : connected>0 ? "rgba(217,119,6,0.25)" : "rgba(220,38,38,0.2)"}` }}>
+                                  {connected}/3
+                                </div>
+                                <button
+                                  onClick={() => handleManageApp(app)}
+                                  disabled={isImporting}
+                                  title={app.dbId ? "Quản lý app / Add Network" : "Import và quản lý app"}
+                                  style={{
+                                    padding:"4px 12px", borderRadius:6, border:"none",
+                                    background: networksToAdd > 0 ? "rgba(79,240,180,0.15)" : "rgba(148,163,184,0.10)",
+                                    color: networksToAdd > 0 ? C.accent : C.text2,
+                                    fontSize:11.5, fontWeight:700, cursor: isImporting ? "not-allowed" : "pointer",
+                                    fontFamily:FS, opacity: isImporting ? 0.6 : 1, flexShrink:0,
+                                    display:"flex", alignItems:"center", gap:4,
+                                  }}>
+                                  {isImporting ? <><span className="sp">↻</span> ...</> :
+                                    networksToAdd > 0
+                                      ? `➕ Add Network (${networksToAdd})`
+                                      : "⚙ Quản lý"
+                                  }
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+          </div>
+        ) : !result ? (
           <>
             {/* Form card */}
             <div style={card}>
@@ -432,6 +688,14 @@ export default function AppsPage() {
                   <div style={{ padding:"11px 14px", background:C.redDim, border:`1px solid rgba(255,95,95,0.3)`,
                     borderRadius:8, fontSize:13, color:C.red, marginBottom:16 }}>
                     ⚠ {error}
+                    {duplicateId && (
+                      <div style={{ marginTop:6 }}>
+                        <a href={`/dashboard/apps/${duplicateId}`}
+                          style={{ color:C.accent, fontWeight:700, textDecoration:"underline", fontSize:12.5 }}>
+                          → Xem app đã tồn tại
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
 

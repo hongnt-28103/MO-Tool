@@ -41,9 +41,9 @@ const C = {
   red:"#FF5F5F", redDim:"rgba(255,95,95,0.12)",
   blue:"#4D9EFF", blueDim:"rgba(77,158,255,0.12)",
 };
-const FD = "'Syne','Inter',system-ui,sans-serif";
-const FS = "'Instrument Sans','Inter',system-ui,sans-serif";
-const FM = "'IBM Plex Mono','Courier New',monospace";
+const FD = "Arial, sans-serif";
+const FS = "Arial, sans-serif";
+const FM = "Arial, sans-serif";
 
 const card: React.CSSProperties = {
   background:C.panel, border:`1px solid ${C.border}`, borderRadius:12, overflow:"hidden", marginBottom:16,
@@ -153,7 +153,7 @@ export default function AppDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setApp(data.app);
-      setKeyMsg("ÄÃ£ lÆ°u App Key thÃ nh cÃ´ng!");
+      setKeyMsg("Da luu App Key thanh cong!");
     } catch (e: unknown) {
       setKeyMsg(e instanceof Error ? e.message : "Error");
     } finally {
@@ -187,10 +187,10 @@ export default function AppDetailPage() {
       if (!res.ok) throw new Error(data.error);
       setApp(data.app);
       setExpandedAdd(null);
-      setAddMsg({ ok: true, text: `âœ“ ÄÃ£ táº¡o app trÃªn ${platform} thÃ nh cÃ´ng!` });
+      setAddMsg({ ok: true, text: `Da tao app tren ${platform} thanh cong!` });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error";
-      setAddMsg({ ok: false, text: `âœ— ${msg}` });
+      setAddMsg({ ok: false, text: `Error: ${msg}` });
       await fetchApp();
     } finally {
       setAdding(false);
@@ -202,10 +202,10 @@ export default function AppDetailPage() {
 
   const statusBadge = (s: string) => {
     const map: Record<string, { color: string; icon: string; label: string }> = {
-      ok: { color: C.accent, icon: "âœ“", label: "OK" },
-      verifying: { color: C.yellow, icon: "â³", label: "VERIFYING" },
-      error: { color: C.red, icon: "âœ—", label: "ERROR" },
-      none: { color: C.text3, icon: "â€”", label: "NOT CREATED" },
+      ok: { color: C.accent, icon: "OK", label: "OK" },
+      verifying: { color: C.yellow, icon: "...", label: "VERIFYING" },
+      error: { color: C.red, icon: "ERR", label: "ERROR" },
+      none: { color: C.text3, icon: "-", label: "NOT CREATED" },
     };
     const { color, icon, label } = map[s] ?? map.none;
     return <span style={{ color, fontWeight:700, fontSize:11, letterSpacing:"0.04em" }}>{icon} {label}</span>;
@@ -213,13 +213,13 @@ export default function AppDetailPage() {
 
   if (loading) return (
     <div style={{ fontFamily:FS, color:C.text, padding:40, textAlign:"center" }}>
-      <span style={{ fontSize:22, display:"inline-block", animation:"spin .8s linear infinite" }}>â†»</span>
+      <span style={{ fontSize:22, display:"inline-block", animation:"spin .8s linear infinite" }}>...</span>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
   if (error || !app) return (
-    <div style={{ fontFamily:FS, color:C.red, padding:40 }}>âš  {error ?? "App not found"}</div>
+    <div style={{ fontFamily:FS, color:C.red, padding:40 }}>Error: {error ?? "App not found"}</div>
   );
 
   const platforms: Array<{
@@ -250,10 +250,10 @@ export default function AppDetailPage() {
   // Info row component for "already have" checklist
   const infoRow = (label: string, value: string | null, ok: boolean) => (
     <div style={{ display:"flex", gap:8, alignItems:"baseline", marginBottom:4, fontSize:12 }}>
-      <span style={{ color: ok ? C.accent : C.text3 }}>{ok ? "âœ“" : "â€”"}</span>
+      <span style={{ color: ok ? C.accent : C.text3 }}>{ok ? "OK" : "-"}</span>
       <span style={{ color:C.text3 }}>{label}:</span>
       <span style={{ color: ok ? C.text2 : C.text3, fontFamily:FM, fontSize:11, wordBreak:"break-all" }}>
-        {value ?? "â€”"}
+        {value ?? "-"}
       </span>
     </div>
   );
@@ -268,10 +268,10 @@ export default function AppDetailPage() {
         <div style={{ marginBottom:12, padding:"10px 12px", borderRadius:6,
           background:C.ink, border:`1px solid ${C.border}` }}>
           <div style={{ fontSize:10, fontWeight:700, color:C.text3, textTransform:"uppercase",
-            letterSpacing:"0.08em", marginBottom:8 }}>ThÃ´ng tin Ä‘Ã£ cÃ³</div>
-          {infoRow("TÃªn app", app.name, true)}
+            letterSpacing:"0.08em", marginBottom:8 }}>Thong tin da co</div>
+          {infoRow("Ten app", app.name, true)}
           {infoRow("Platform", app.platform, true)}
-          {infoRow("Cháº¿ Ä‘á»™", app.isLive ? "Live" : "Test", true)}
+          {infoRow("Che do", app.isLive ? "Live" : "Test", true)}
           {app.isLive && infoRow("Store URL", app.storeUrl, !!app.storeUrl)}
           {infoRow("Bundle ID", app.bundleId, !!app.bundleId)}
         </div>
@@ -280,10 +280,10 @@ export default function AppDetailPage() {
         {key === "admob" && (
           app.admobPublisherId
             ? <div style={{ fontSize:12, color:C.accent, marginBottom:12 }}>
-                âœ“ Äá»§ thÃ´ng tin. Publisher: <span style={{ fontFamily:FM }}>{app.admobPublisherId}</span>
+                Du thong tin. Publisher: <span style={{ fontFamily:FM }}>{app.admobPublisherId}</span>
               </div>
             : <div style={{ fontSize:12, color:C.red, marginBottom:12 }}>
-                âœ— App nÃ y khÃ´ng cÃ³ AdMob Publisher ID â€” khÃ´ng thá»ƒ thÃªm vÃ o AdMob.
+                App nay khong co AdMob Publisher ID - khong the them vao AdMob.
               </div>
         )}
 
@@ -293,7 +293,7 @@ export default function AppDetailPage() {
             <select style={sel} value={addForm.pangleCategoryCode}
               onChange={e => upd("pangleCategoryCode", e.target.value)}
               onClick={loadPangleCategories}>
-              <option value="">{pangleCatLoading ? "Äang táº£i..." : "â€” Chá»n category â€”"}</option>
+              <option value="">{pangleCatLoading ? "Dang tai..." : "- Chon category -"}</option>
               {pangleCategories.map(c => (
                 <option key={c.code} value={c.code}>{c.label}</option>
               ))}
@@ -307,7 +307,7 @@ export default function AppDetailPage() {
               <label style={lbl}>App Category <span style={{ color:C.red }}>*</span></label>
               <select style={sel} value={addForm.liftoffCategory}
                 onChange={e => upd("liftoffCategory", e.target.value)}>
-                <option value="">â€” Chá»n category â€”</option>
+                <option value="">- Chon category -</option>
                 {LIFTOFF_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
@@ -333,18 +333,18 @@ export default function AppDetailPage() {
                   upd("mintegralStoreName", "");
                   upd("mintegralPreviewLink", "");
                 }}>
-                <option value="">â€” Chá»n store â€”</option>
+                <option value="">- Chon store -</option>
                 <option value="google_play">Google Play</option>
                 <option value="amazon">Amazon Appstore</option>
                 <option value="other_store">Other Store</option>
-                <option value="not_live">ChÆ°a live (khÃ´ng cÃ³ store)</option>
+                <option value="not_live">Chua live (khong co store)</option>
               </select>
             </div>
             {addForm.mintegralAndroidStore === "other_store" && (
               <>
                 <div style={{ marginBottom:10 }}>
                   <label style={lbl}>Store Name <span style={{ color:C.red }}>*</span></label>
-                  <input style={inp} placeholder="TÃªn store..."
+                  <input style={inp} placeholder="Ten store..."
                     value={addForm.mintegralStoreName}
                     onChange={e => upd("mintegralStoreName", e.target.value)} />
                 </div>
@@ -361,7 +361,7 @@ export default function AppDetailPage() {
 
         {key === "mintegral" && !isAndroid && (
           <div style={{ fontSize:12, color:C.accent, marginBottom:12 }}>
-            âœ“ Äá»§ thÃ´ng tin Ä‘á»ƒ thÃªm vÃ o Mintegral (iOS).
+            Du thong tin de them vao Mintegral (iOS).
           </div>
         )}
 
@@ -376,7 +376,7 @@ export default function AppDetailPage() {
               fontSize:12, fontWeight:700, cursor: (!adding && canAdd(key)) ? "pointer" : "not-allowed",
               fontFamily:FS, opacity: adding ? 0.6 : 1,
             }}>
-            {adding ? "Äang táº¡o..." : `+ ThÃªm vÃ o ${key.charAt(0).toUpperCase()+key.slice(1)}`}
+            {adding ? "Dang tao..." : `+ Them vao ${key.charAt(0).toUpperCase()+key.slice(1)}`}
           </button>
           <button onClick={() => { setExpandedAdd(null); setAddMsg(null); }}
             style={{
@@ -384,7 +384,7 @@ export default function AppDetailPage() {
               border:`1px solid ${C.border2}`, background:"transparent",
               color:C.text2, fontSize:12, cursor:"pointer", fontFamily:FS,
             }}>
-            Há»§y
+            Huy
           </button>
         </div>
       </div>
@@ -394,7 +394,6 @@ export default function AppDetailPage() {
   return (
     <div style={{ fontFamily:FS, background:C.ink, minHeight:"100vh", color:C.text }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Instrument+Sans:wght@400;500;600&display=swap');
         *{box-sizing:border-box;}
         input:focus,select:focus{outline:none!important;border-color:${C.accent}!important;}
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -408,9 +407,9 @@ export default function AppDetailPage() {
         position:"sticky", top:0, zIndex:20 }}>
         <button onClick={() => router.push("/dashboard/apps/list")}
           style={{ background:"none", border:"none", color:C.text2, cursor:"pointer", fontSize:14 }}>
-          â†
+          Back
         </button>
-        <div style={{ fontFamily:FD, fontWeight:700, fontSize:15 }}>Chi tiáº¿t app</div>
+        <div style={{ fontFamily:FD, fontWeight:700, fontSize:15 }}>Chi tiet app</div>
       </div>
 
       <div className="fu" style={{ padding:"32px", maxWidth:700 }}>
@@ -431,17 +430,17 @@ export default function AppDetailPage() {
         <div style={card}>
           <div style={{ padding:"13px 18px", borderBottom:`1px solid ${C.border}`,
             fontFamily:FD, fontWeight:700, fontSize:13 }}>
-            ThÃ´ng tin chung
+            Thong tin chung
           </div>
           <div style={{ padding:"16px 18px" }}>
             {[
-              ["TÃªn app", app.name],
+              ["Ten app", app.name],
               ["Platform", app.platform],
-              ["Cháº¿ Ä‘á»™", app.isLive ? "Live" : "Test (chÆ°a live)"],
-              ["Store URL", app.storeUrl ?? "â€”"],
-              ["Bundle ID", app.bundleId ?? "â€”"],
-              ["AdMob Publisher", app.admobPublisherId ?? "â€”"],
-              ["Táº¡o lÃºc", new Date(app.createdAt).toLocaleString("vi-VN")],
+              ["Che do", app.isLive ? "Live" : "Test (chua live)"],
+              ["Store URL", app.storeUrl ?? "-"],
+              ["Bundle ID", app.bundleId ?? "-"],
+              ["AdMob Publisher", app.admobPublisherId ?? "-"],
+              ["Tao luc", new Date(app.createdAt).toLocaleString("vi-VN")],
             ].map(([k, v]) => (
               <div key={k as string} style={{ display:"flex", justifyContent:"space-between",
                 padding:"8px 0", borderBottom:`1px solid ${C.border}`, gap:12 }}>
@@ -483,7 +482,7 @@ export default function AppDetailPage() {
                           background:C.blueDim, color:C.blue, fontSize:10, fontWeight:700,
                           cursor:"pointer", fontFamily:FS,
                         }}>
-                        + ThÃªm
+                        + Them
                       </button>
                     )}
                   </div>
@@ -497,7 +496,7 @@ export default function AppDetailPage() {
 
                 {p.status === "error" && p.error && (
                   <div style={{ fontSize:11.5, color:C.red, marginBottom:8, wordBreak:"break-word" }}>
-                    âœ— {p.error}
+                    Error: {p.error}
                   </div>
                 )}
 
@@ -510,7 +509,7 @@ export default function AppDetailPage() {
                       cursor: retrying === p.key ? "not-allowed" : "pointer", fontFamily:FS,
                       opacity: retrying === p.key ? 0.5 : 1,
                     }}>
-                    {retrying === p.key ? "Äang retry..." : "â†» Retry"}
+                    {retrying === p.key ? "Dang retry..." : "Retry"}
                   </button>
                 )}
 
@@ -529,8 +528,8 @@ export default function AppDetailPage() {
           </div>
           <div style={{ padding:"16px 18px" }}>
             <div style={{ fontSize:12, color:C.text3, marginBottom:12, lineHeight:1.6 }}>
-              App Key <strong>khÃ´ng cÃ³</strong> trong Create App API response.
-              Láº¥y tá»« <strong>Mintegral Dashboard â†’ APP Setting</strong> rá»“i paste vÃ o Ä‘Ã¢y.
+              App Key <strong>khong co</strong> trong Create App API response.
+              Lay tu <strong>Mintegral Dashboard -&gt; APP Setting</strong> roi paste vao day.
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <input style={{ ...inp, flex:1 }}
@@ -547,18 +546,18 @@ export default function AppDetailPage() {
                   fontSize:13, fontWeight:700, cursor: !mintegralKeyInput.trim() ? "not-allowed" : "pointer",
                   fontFamily:FS, whiteSpace:"nowrap",
                 }}>
-                {savingKey ? "..." : "LÆ°u"}
+                {savingKey ? "..." : "Luu"}
               </button>
             </div>
             {keyMsg && (
               <div style={{ marginTop:8, fontSize:12,
-                color: keyMsg.includes("thÃ nh cÃ´ng") ? C.accent : C.red }}>
+                color: keyMsg.includes("thanh cong") ? C.accent : C.red }}>
                 {keyMsg}
               </div>
             )}
             {app.mintegralAppKey && (
               <div style={{ marginTop:10, fontSize:12, color:C.accent }}>
-                âœ“ App Key hiá»‡n táº¡i: <span style={{ fontFamily:FM }}>{app.mintegralAppKey}</span>
+                App Key hien tai: <span style={{ fontFamily:FM }}>{app.mintegralAppKey}</span>
               </div>
             )}
           </div>
@@ -572,7 +571,7 @@ export default function AppDetailPage() {
               background:C.accent, color:C.ink, fontSize:14, fontWeight:700,
               cursor:"pointer", fontFamily:FS,
             }}>
-            â† Táº¡o app má»›i
+            Tao app moi
           </button>
           <button onClick={() => router.push("/dashboard/apps/list")}
             style={{
@@ -580,7 +579,7 @@ export default function AppDetailPage() {
               border:`1px solid ${C.border2}`, color:C.text2, fontSize:13,
               fontWeight:600, cursor:"pointer", fontFamily:FS,
             }}>
-            Danh sÃ¡ch
+            Danh sach
           </button>
         </div>
       </div>

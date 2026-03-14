@@ -77,6 +77,21 @@ export const mintegral = {
       ...(params.hbUnitName ? { hb_unit_name: params.hbUnitName } : {}),
     });
   },
+
+  async listApps(): Promise<Array<{ appId: string; name: string; os: string; bundleId?: string }>> {
+    try {
+      const result = await mintegralPost("/app/open_api_get", {});
+      const list: any[] = result?.data?.list ?? [];
+      return list.map((a: any) => ({
+        appId: String(a.app_id ?? ""),
+        name: String(a.app_name ?? ""),
+        os: String(a.os ?? "").toUpperCase(),
+        bundleId: a.package ?? a.bundle_id ?? undefined,
+      }));
+    } catch {
+      return [];
+    }
+  },
 };
 
 /** Map AdMob ad format to Mintegral ad_type */
